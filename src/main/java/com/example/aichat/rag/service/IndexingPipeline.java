@@ -1,0 +1,127 @@
+package com.example.aichat.rag.service;
+
+import com.example.aichat.rag.model.KnowledgeDocument;
+import com.example.aichat.rag.repository.KnowledgeDocumentRepository;
+import dev.langchain4j.data.document.Document;
+import dev.langchain4j.data.segment.TextSegment;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+@Service
+public class IndexingPipeline {
+
+    private static final Logger log = LoggerFactory.getLogger(IndexingPipeline.class);
+
+    private final DocumentParseService parseService;
+    private final ChunkService chunkService;
+    private final VectorStoreService vectorStoreService;
+    private final KnowledgeDocumentRepository documentRepo;
+
+    @Value("${rag.document.upload-dir:./uploads}")
+    private String uploadDir;
+
+    public IndexingPipeline(DocumentParseService parseService,
+                            ChunkService chunkService,
+                            VectorStoreService vectorStoreService,
+                            KnowledgeDocumentRepository documentRepo) {
+        this.parseService = parseService;
+        this.chunkService = chunkService;
+        this.vectorStoreService = vectorStoreService;
+        this.documentRepo = documentRepo;
+    }
+
+    /**
+     * 保存上传文件并创建数据库记录
+     */
+    public KnowledgeDocument saveFile(MultipartFile file, Long tenantId) {
+        // 保存文件到本地（转绝对路径，避免 Windows 下被解析到 Tomcat 临时目录）
+        String storedName = UUID.randomUUID().toString().replace("-", "") + "_" + file.getOriginalFilename();
+        Path filePath = Path.of(uploadDir, storedName).toAbsolutePath().normalize();
+        try {
+            Files.createDirectories(filePath.getParent());
+            Files.copy(file.getInputStream(), filePath);
+        } catch (IOException e) {
+            throw new RuntimeException("文件保存失败", e);
+        }
+
+        // 创建数据库记录
+        KnowledgeDocument doc = new KnowledgeDocument();
+        doc.setTenantId(tenantId);
+        doc.setFileName(file.getOriginalFilename());
+        doc.setFilePath(filePath.toString());
+        doc.setFileSize(file.getSize());
+        doc.setContentType(file.getContentType());
+        doc.setStatus(0);
+        return documentRepo.save(doc);
+    }
+
+    /**
+     * 异步执行完整 Indexing 管线：解析 → 切片 → 向量化入库
+     * 注意：接收 filePath 而非 MultipartFile，因为 @Async 在新线程执行时 MultipartFile 流已关闭
+     */
+    @Async
+    public void processAsync(Long docId, String filePath) {
+        KnowledgeDocument doc = documentRepo.findById(docId).orElse(null);
+        if (doc == null) return;
+
+        List<String> storedEmbeddingIds = List.of();
+        try {
+            log.info("[Indexing] 开始处理文档: id={}, name={}", docId, doc.getFileName());
+
+            // Step 1: 从磁盘路径解析文档
+            Document parsed = parseService.parseFile(Path.of(filePath));
+            String text = parsed.text();
+            doc.setCharCount(text.length());
+            doc.setStatus(1);
+            documentRepo.save(doc);
+            log.info("[Indexing] 解析完成: id={}, 字符数={}", docId, text.length());
+
+            // Step 2: 文本切片（metadata 中带 tenant_id 用于检索隔离）
+            List<TextSegment> segments = chunkService.splitText(text, Map.of(
+                    "doc_id", String.valueOf(doc.getId()),
+                    "tenant_id", String.valueOf(doc.getTenantId()),
+                    "file_name", doc.getFileName()
+            ));
+            doc.setChunkCount(segments.size());
+            documentRepo.save(doc);
+            log.info("[Indexing] 切片完成: id={}, 切片数={}", docId, segments.size());
+
+            // Step 3: 向量化并存入 PgVector
+            storedEmbeddingIds = vectorStoreService.storeAll(segments);
+
+            // Step 4: 更新状态
+            doc.setStatus(2);
+            documentRepo.save(doc);
+            log.info("[Indexing] 文档处理完成: id={}, name={}", docId, doc.getFileName());
+
+        } catch (Exception e) {
+            log.error("[Indexing] 文档处理失败: id={}, name={}", docId, doc.getFileName(), e);
+            doc.setStatus(-1);
+            doc.setErrorMessage(e.getMessage() != null ?
+                    e.getMessage().substring(0, Math.min(e.getMessage().length(), 900)) : "未知错误");
+            documentRepo.save(doc);
+
+            // 清理已入库的向量片段（避免孤儿数据）
+            if (!storedEmbeddingIds.isEmpty()) {
+                try {
+                    vectorStoreService.removeByIds(storedEmbeddingIds);
+                    log.info("[Indexing] 已清理 {} 个孤儿向量", storedEmbeddingIds.size());
+                } catch (Exception cleanupErr) {
+                    log.warn("[Indexing] 清理孤儿向量失败", cleanupErr);
+                }
+            }
+        }
+    }
+}

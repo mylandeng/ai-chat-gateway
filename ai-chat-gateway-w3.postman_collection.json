@@ -1,0 +1,375 @@
+{
+  "info": {
+    "name": "AI Chat Gateway W3 - RAG知识库",
+    "description": "AI聊天网关 W3 RAG知识库引擎API集合\n\n包含：文档上传、文档管理、RAG问答（非流式+流式）\n\n使用前：\n1. 确保 PgVector 已启动：docker-compose up -d pgvector\n2. 在 W1 集合中创建 API Key 并填入 Collection Variables 的 api_key\n3. 上传文档后等待状态变为[已就绪]再进行问答",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8080", "type": "string" },
+    { "key": "api_key", "value": "", "type": "string", "description": "从W1「创建API Key」获取" },
+    { "key": "doc_id", "value": "", "type": "string", "description": "上传文档后自动填入" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{api_key}}", "type": "string" }]
+  },
+  "item": [
+    {
+      "name": "Day16-17 文档管理",
+      "description": "文档上传、列表查询、删除",
+      "item": [
+        {
+          "name": "上传文档",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.id) {",
+                  "    pm.collectionVariables.set('doc_id', jsonData.id.toString());",
+                  "    console.log('已保存 doc_id: ' + jsonData.id);",
+                  "}",
+                  "",
+                  "pm.test('上传成功', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(jsonData.id).to.be.above(0);",
+                  "    pm.expect(jsonData.fileName).to.be.a('string');",
+                  "    pm.expect(jsonData.status).to.eql(0);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "",
+                  "description": "选择要上传的文件 (支持 PDF/DOCX/TXT/MD/CSV)"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/rag/documents/upload",
+              "host": ["{{base_url}}"],
+              "path": ["api", "rag", "documents", "upload"]
+            },
+            "description": "上传文档到知识库，自动触发异步 Indexing 管线：\n解析 → 切片 → 向量化 → 入库\n\n支持格式：PDF、DOCX、TXT、MD、CSV\n最大文件大小：50MB\n\n上传后 status=0（处理中），完成后变为 status=2（已就绪）"
+          }
+        },
+        {
+          "name": "文档列表",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('返回文档数组', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.be.an('array');",
+                  "});",
+                  "",
+                  "// 检查是否有处理中的文档",
+                  "var docs = pm.response.json();",
+                  "var processing = docs.filter(d => d.status === 0 || d.status === 1);",
+                  "if (processing.length > 0) {",
+                  "    console.log('仍有 ' + processing.length + ' 个文档在处理中，请稍后重试');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/rag/documents",
+              "host": ["{{base_url}}"],
+              "path": ["api", "rag", "documents"]
+            },
+            "description": "获取当前租户的所有文档列表\n\nstatus 说明：\n- 0: 处理中\n- 1: 解析完成\n- 2: 已就绪（可问答）\n- -1: 处理失败"
+          }
+        },
+        {
+          "name": "删除文档",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('删除成功', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.status).to.eql('deleted');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/rag/documents/{{doc_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "rag", "documents", "{{doc_id}}"]
+            },
+            "description": "删除指定文档（仅限当前租户的文档）\n\n注意：目前只删除数据库记录，PgVector 中的向量数据暂不清理"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Day20 RAG问答",
+      "description": "基于知识库的智能问答（非流式 + 流式SSE）",
+      "item": [
+        {
+          "name": "RAG问答（非流式）",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('返回问答结果', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.answer).to.be.a('string');",
+                  "    pm.expect(jsonData.sources).to.be.an('array');",
+                  "    pm.expect(jsonData.question).to.be.a('string');",
+                  "});",
+                  "",
+                  "var jsonData = pm.response.json();",
+                  "console.log('回答: ' + jsonData.answer.substring(0, 200));",
+                  "console.log('引用来源数: ' + jsonData.sources.length);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/rag/chat?q=这个文档讲了什么内容&model=deepseek-chat",
+              "host": ["{{base_url}}"],
+              "path": ["api", "rag", "chat"],
+              "query": [
+                { "key": "q", "value": "这个文档讲了什么内容", "description": "问题内容" },
+                { "key": "model", "value": "deepseek-chat", "description": "模型ID（可选，默认 deepseek-chat）\n可选值：deepseek-chat / qwen-plus / gpt-4o-mini / claude-sonnet" }
+              ]
+            },
+            "description": "基于知识库的非流式问答\n\n流程：向量检索 → 构建上下文 → LLM生成\n\n返回：\n- answer: 回答内容\n- sources: 引用来源列表（fileName + score + preview）\n- question: 原始问题"
+          }
+        },
+        {
+          "name": "RAG问答（流式SSE）",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// SSE 流式响应无法用常规测试校验",
+                  "// 在 Postman Console 中查看流式输出",
+                  "pm.test('SSE 连接成功', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "text/event-stream" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/rag/stream?q=帮我总结一下文档的主要内容&model=deepseek-chat",
+              "host": ["{{base_url}}"],
+              "path": ["api", "rag", "stream"],
+              "query": [
+                { "key": "q", "value": "帮我总结一下文档的主要内容", "description": "问题内容" },
+                { "key": "model", "value": "deepseek-chat", "description": "模型ID（可选）" }
+              ]
+            },
+            "description": "基于知识库的流式问答（SSE）\n\n事件格式：\n1. event:sources + data:[{fileName, score}]  — 引用来源\n2. data:{\"content\":\"token\"}  — 逐 token 输出\n3. data:[DONE]  — 结束标记\n\n注意：Postman 对 SSE 支持有限，建议用 curl 或前端测试：\ncurl -N \"{{base_url}}/api/rag/stream?q=问题\" -H \"Authorization: Bearer {{api_key}}\""
+          }
+        }
+      ]
+    },
+    {
+      "name": "Day20 测试场景",
+      "description": "端到端测试场景，按顺序执行",
+      "item": [
+        {
+          "name": "1. 上传测试文档 (TXT)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// 提示：在 Body > form-data > file 中选择一个 .txt 文件",
+                  "console.log('请确保已选择要上传的文件');"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.id) {",
+                  "    pm.collectionVariables.set('doc_id', jsonData.id.toString());",
+                  "}",
+                  "pm.test('文档上传成功', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(jsonData.status).to.eql(0);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "",
+                  "description": "选择 .txt / .pdf / .docx 文件"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/rag/documents/upload",
+              "host": ["{{base_url}}"],
+              "path": ["api", "rag", "documents", "upload"]
+            }
+          }
+        },
+        {
+          "name": "2. 等待处理完成 (轮询)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var docs = pm.response.json();",
+                  "var target = docs.find(d => d.id.toString() === pm.collectionVariables.get('doc_id'));",
+                  "",
+                  "if (!target) {",
+                  "    pm.test('文档不存在', function () { pm.expect.fail('未找到文档'); });",
+                  "} else if (target.status === 2) {",
+                  "    pm.test('文档已就绪', function () {",
+                  "        pm.expect(target.status).to.eql(2);",
+                  "        pm.expect(target.chunkCount).to.be.above(0);",
+                  "        console.log('字符数: ' + target.charCount + ', 切片数: ' + target.chunkCount);",
+                  "    });",
+                  "} else if (target.status === -1) {",
+                  "    pm.test('文档处理失败', function () {",
+                  "        console.log('错误: ' + target.errorMessage);",
+                  "        pm.expect.fail('处理失败: ' + target.errorMessage);",
+                  "    });",
+                  "} else {",
+                  "    console.log('状态: ' + target.status + '，3秒后重试...');",
+                  "    setTimeout(function() {}, 3000);",
+                  "    postman.setNextRequest('2. 等待处理完成 (轮询)');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/rag/documents",
+              "host": ["{{base_url}}"],
+              "path": ["api", "rag", "documents"]
+            },
+            "description": "轮询文档列表，等待目标文档状态变为 2（已就绪）\n在 Collection Runner 中运行时会自动重试"
+          }
+        },
+        {
+          "name": "3. RAG问答验证",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('RAG问答返回结果', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.answer).to.be.a('string');",
+                  "    pm.expect(jsonData.answer.length).to.be.above(10);",
+                  "    pm.expect(jsonData.sources).to.be.an('array');",
+                  "    pm.expect(jsonData.sources.length).to.be.above(0);",
+                  "});",
+                  "",
+                  "var jsonData = pm.response.json();",
+                  "console.log('=== RAG 回答 ===');",
+                  "console.log(jsonData.answer);",
+                  "console.log('来源数: ' + jsonData.sources.length);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/rag/chat?q=这个文档讲了什么",
+              "host": ["{{base_url}}"],
+              "path": ["api", "rag", "chat"],
+              "query": [
+                { "key": "q", "value": "这个文档讲了什么" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "4. 清理 - 删除测试文档",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('清理成功', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/rag/documents/{{doc_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "rag", "documents", "{{doc_id}}"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
