@@ -1,0 +1,236 @@
+{
+  "info": {
+    "name": "AI Chat Gateway W2",
+    "description": "AI聊天网关 W2 新增API集合\n\n包含：用量统计、租户管理、配额管理、Prompt模板",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8080", "type": "string" },
+    { "key": "api_key", "value": "", "type": "string" },
+    { "key": "tenant_id", "value": "1", "type": "string" },
+    { "key": "template_id", "value": "", "type": "string" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{api_key}}", "type": "string" }]
+  },
+  "item": [
+    {
+      "name": "Day9 租户管理",
+      "item": [
+        {
+          "name": "创建租户",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "var jsonData = pm.response.json();",
+                "if (jsonData.id) {",
+                "    pm.collectionVariables.set('tenant_id', jsonData.id.toString());",
+                "}"
+              ],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"测试公司\",\n  \"contactEmail\": \"test@example.com\",\n  \"monthlyQuota\": 1000000,\n  \"dailyQuota\": 100000\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/tenants", "host": ["{{base_url}}"], "path": ["api", "tenants"] },
+            "auth": { "type": "noauth" }
+          }
+        },
+        {
+          "name": "租户列表",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/tenants", "host": ["{{base_url}}"], "path": ["api", "tenants"] },
+            "auth": { "type": "noauth" }
+          }
+        },
+        {
+          "name": "查询单个租户",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/tenants/{{tenant_id}}", "host": ["{{base_url}}"], "path": ["api", "tenants", "{{tenant_id}}"] },
+            "auth": { "type": "noauth" }
+          }
+        },
+        {
+          "name": "查询配额",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/tenants/{{tenant_id}}/quota", "host": ["{{base_url}}"], "path": ["api", "tenants", "{{tenant_id}}", "quota"] },
+            "auth": { "type": "noauth" }
+          }
+        },
+        {
+          "name": "修改配额",
+          "request": {
+            "method": "PUT",
+            "url": {
+              "raw": "{{base_url}}/api/tenants/{{tenant_id}}/quota?monthlyQuota=2000000&dailyQuota=200000",
+              "host": ["{{base_url}}"],
+              "path": ["api", "tenants", "{{tenant_id}}", "quota"],
+              "query": [
+                { "key": "monthlyQuota", "value": "2000000" },
+                { "key": "dailyQuota", "value": "200000" }
+              ]
+            },
+            "auth": { "type": "noauth" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Day8 用量统计",
+      "item": [
+        {
+          "name": "今日汇总",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/usage/summary", "host": ["{{base_url}}"], "path": ["api", "usage", "summary"] }
+          }
+        },
+        {
+          "name": "日维度用量",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/usage/daily?start=2024-01-01&end=2026-12-31",
+              "host": ["{{base_url}}"],
+              "path": ["api", "usage", "daily"],
+              "query": [
+                { "key": "start", "value": "2024-01-01" },
+                { "key": "end", "value": "2026-12-31" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "按 Key 统计",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/usage/by-key?start=2024-01-01&end=2026-12-31",
+              "host": ["{{base_url}}"],
+              "path": ["api", "usage", "by-key"],
+              "query": [
+                { "key": "start", "value": "2024-01-01" },
+                { "key": "end", "value": "2026-12-31" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "按模型统计",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/usage/by-model?start=2024-01-01&end=2026-12-31",
+              "host": ["{{base_url}}"],
+              "path": ["api", "usage", "by-model"],
+              "query": [
+                { "key": "start", "value": "2024-01-01" },
+                { "key": "end", "value": "2026-12-31" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Day10-11 Prompt模板",
+      "item": [
+        {
+          "name": "创建模板",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "var jsonData = pm.response.json();",
+                "if (jsonData.id) {",
+                "    pm.collectionVariables.set('template_id', jsonData.id.toString());",
+                "}"
+              ],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"翻译助手\",\n  \"description\": \"多语言翻译\",\n  \"category\": \"translation\",\n  \"content\": \"你是一个专业翻译。请将以下内容翻译成{{targetLang}}：\\n\\n{{content}}\",\n  \"variables\": \"[{\\\"name\\\":\\\"targetLang\\\",\\\"label\\\":\\\"目标语言\\\",\\\"required\\\":true},{\\\"name\\\":\\\"content\\\",\\\"label\\\":\\\"内容\\\",\\\"required\\\":true}]\",\n  \"isPublic\": true\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/templates", "host": ["{{base_url}}"], "path": ["api", "templates"] }
+          }
+        },
+        {
+          "name": "我的模板列表",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/templates", "host": ["{{base_url}}"], "path": ["api", "templates"] }
+          }
+        },
+        {
+          "name": "渲染模板",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"targetLang\": \"英文\",\n  \"content\": \"春眠不觉晓\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/templates/{{template_id}}/render", "host": ["{{base_url}}"], "path": ["api", "templates", "{{template_id}}", "render"] },
+            "auth": { "type": "noauth" }
+          }
+        },
+        {
+          "name": "版本历史",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/templates/{{template_id}}/versions", "host": ["{{base_url}}"], "path": ["api", "templates", "{{template_id}}", "versions"] }
+          }
+        },
+        {
+          "name": "模板市场",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/templates/market", "host": ["{{base_url}}"], "path": ["api", "templates", "market"] },
+            "auth": { "type": "noauth" }
+          }
+        },
+        {
+          "name": "使用模板聊天",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"deepseek-chat\",\n  \"templateId\": 1,\n  \"variables\": {\n    \"targetLang\": \"英文\",\n    \"content\": \"春眠不觉晓，处处闻啼鸟\"\n  }\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/chat", "host": ["{{base_url}}"], "path": ["api", "chat"] }
+          }
+        },
+        {
+          "name": "收藏模板",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/api/templates/{{template_id}}/favorite", "host": ["{{base_url}}"], "path": ["api", "templates", "{{template_id}}", "favorite"] }
+          }
+        },
+        {
+          "name": "我的收藏",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/templates/favorites", "host": ["{{base_url}}"], "path": ["api", "templates", "favorites"] }
+          }
+        }
+      ]
+    }
+  ]
+}
