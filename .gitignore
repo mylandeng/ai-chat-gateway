@@ -1,0 +1,39 @@
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+### IDE ###
+.idea/
+*.iws
+*.iml
+*.ipr
+.vscode/
+*.swp
+*.swo
+
+### OS ###
+.DS_Store
+Thumbs.db
+
+### Env ###
+.env
+*.env.local
+
+### Logs ###
+*.log
+logs/
+
+### Node ###
+node_modules/
+admin-ui/dist/
+
+### Runtime ###
+uploads/
+
+### Test data ###
+ai-knowlege.txt
+test-knowledge.txt
+
+### Dev scratch ###
+dev/

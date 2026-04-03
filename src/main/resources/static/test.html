@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Chat Gateway - 测试页面</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        h1 { text-align: center; margin-bottom: 20px; color: #333; }
+        .card { background: white; border-radius: 8px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .card h2 { font-size: 16px; color: #666; margin-bottom: 12px; }
+        .form-row { display: flex; gap: 8px; margin-bottom: 8px; }
+        input, select { padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
+        input[type="text"] { flex: 1; }
+        button { padding: 8px 20px; background: #4f46e5; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; }
+        button:hover { background: #4338ca; }
+        button:disabled { background: #9ca3af; cursor: not-allowed; }
+        .output { margin-top: 12px; padding: 12px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px;
+                   min-height: 80px; white-space: pre-wrap; word-break: break-word; font-size: 14px; line-height: 1.6; }
+        .status { font-size: 12px; color: #6b7280; margin-top: 4px; }
+        .section-title { font-size: 13px; font-weight: 600; color: #4f46e5; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>AI Chat Gateway W1 测试</h1>
+
+    <!-- API Key 设置 -->
+    <div class="card">
+        <h2>API Key 设置</h2>
+        <div class="form-row">
+            <input type="text" id="apiKey" placeholder="输入你的 API Key（Bearer sk-xxx）">
+            <button onclick="createKey()">创建新Key</button>
+        </div>
+        <div class="status" id="keyStatus"></div>
+    </div>
+
+    <!-- 单轮聊天 (Day1) -->
+    <div class="card">
+        <div class="section-title">Day1 - 单轮聊天</div>
+        <div class="form-row">
+            <input type="text" id="chatInput" placeholder="输入消息..." value="用Java写一个冒泡排序">
+            <select id="chatModel">
+                <option value="deepseek-chat">deepseek-chat</option>
+                <option value="qwen-plus">qwen-plus</option>
+                <option value="gpt-4o-mini">gpt-4o-mini</option>
+                <option value="claude-sonnet">claude-sonnet</option>
+            </select>
+            <button onclick="sendChat()">发送</button>
+        </div>
+        <div class="output" id="chatOutput">等待输入...</div>
+    </div>
+
+    <!-- 流式聊天 (Day2) -->
+    <div class="card">
+        <div class="section-title">Day2 - SSE 流式聊天</div>
+        <div class="form-row">
+            <input type="text" id="streamInput" placeholder="输入消息..." value="讲一个关于程序员的笑话">
+            <select id="streamModel">
+                <option value="deepseek-chat">deepseek-chat</option>
+                <option value="qwen-plus">qwen-plus</option>
+                <option value="gpt-4o-mini">gpt-4o-mini</option>
+                <option value="claude-sonnet">claude-sonnet</option>
+            </select>
+            <button onclick="sendStream()">流式发送</button>
+        </div>
+        <div class="output" id="streamOutput">等待输入...</div>
+        <div class="status" id="streamStatus"></div>
+    </div>
+
+    <!-- 多轮对话 (Day6) -->
+    <div class="card">
+        <div class="section-title">Day6 - 多轮对话</div>
+        <div class="form-row">
+            <button onclick="createSession()">创建新会话</button>
+            <span class="status" id="sessionId">未创建</span>
+        </div>
+        <div class="form-row" style="margin-top:8px">
+            <input type="text" id="contextInput" placeholder="输入消息..." value="我叫张三，我正在学Spring Boot">
+            <button onclick="sendContext()" id="contextBtn" disabled>发送</button>
+        </div>
+        <div class="output" id="contextOutput">先创建会话...</div>
+    </div>
+
+    <!-- 模型列表 (Day3-4) -->
+    <div class="card">
+        <div class="section-title">Day3-4 - 可用模型</div>
+        <button onclick="loadModels()">刷新模型列表</button>
+        <div class="output" id="modelsOutput">点击刷新...</div>
+    </div>
+</div>
+
+<script>
+    const BASE = '';
+
+    function getAuthHeader() {
+        const key = document.getElementById('apiKey').value;
+        return key ? { 'Authorization': 'Bearer ' + key } : {};
+    }
+
+    async function createKey() {
+        try {
+            const res = await fetch(BASE + '/api/keys?tenantId=1&name=test-key', { method: 'POST' });
+            const data = await res.json();
+            document.getElementById('apiKey').value = data.key;
+            document.getElementById('keyStatus').textContent = '已创建: ' + data.displayKey + ' (keyId: ' + data.keyId + ')';
+        } catch (e) {
+            document.getElementById('keyStatus').textContent = '错误: ' + e.message;
+        }
+    }
+
+    // Day1 - 单轮聊天
+    async function sendChat() {
+        const message = document.getElementById('chatInput').value;
+        const model = document.getElementById('chatModel').value;
+        const output = document.getElementById('chatOutput');
+        output.textContent = '请求中...';
+
+        try {
+            const res = await fetch(BASE + '/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+                body: JSON.stringify({ message, model })
+            });
+            const data = await res.json();
+            if (data.error) {
+                output.textContent = '错误: ' + data.error.message;
+            } else {
+                output.textContent = data.reply + '\n\n[模型: ' + data.model + ', Tokens: ' + data.tokenUsed + ']';
+            }
+        } catch (e) {
+            output.textContent = '错误: ' + e.message;
+        }
+    }
+
+    // Day2 - 流式聊天
+    function sendStream() {
+        const message = document.getElementById('streamInput').value;
+        const model = document.getElementById('streamModel').value;
+        const output = document.getElementById('streamOutput');
+        const status = document.getElementById('streamStatus');
+        output.textContent = '';
+        status.textContent = '连接中...';
+
+        const url = BASE + '/api/chat/stream?message=' + encodeURIComponent(message)
+                    + '&model=' + encodeURIComponent(model);
+
+        const eventSource = new EventSource(url);
+
+        eventSource.onmessage = function(event) {
+            try {
+                const data = JSON.parse(event.data);
+                if (data === '[DONE]' || data.content === '[DONE]') {
+                    eventSource.close();
+                    status.textContent = '完成';
+                    return;
+                }
+                output.textContent += data.content;
+                status.textContent = '接收中...';
+            } catch (e) {
+                if (event.data === '"[DONE]"') {
+                    eventSource.close();
+                    status.textContent = '完成';
+                }
+            }
+        };
+
+        eventSource.onerror = function() {
+            eventSource.close();
+            status.textContent = '连接结束';
+        };
+    }
+
+    // Day6 - 多轮对话
+    let currentSessionId = null;
+
+    async function createSession() {
+        try {
+            const res = await fetch(BASE + '/api/sessions?model=deepseek-chat&systemPrompt=你是一个友好的AI助手', {
+                method: 'POST',
+                headers: getAuthHeader()
+            });
+            const data = await res.json();
+            currentSessionId = data.sessionId;
+            document.getElementById('sessionId').textContent = '会话: ' + currentSessionId.substring(0, 8) + '...';
+            document.getElementById('contextBtn').disabled = false;
+            document.getElementById('contextOutput').textContent = '会话已创建，可以开始对话';
+        } catch (e) {
+            document.getElementById('sessionId').textContent = '错误: ' + e.message;
+        }
+    }
+
+    async function sendContext() {
+        if (!currentSessionId) return;
+        const message = document.getElementById('contextInput').value;
+        const output = document.getElementById('contextOutput');
+
+        output.textContent += '\n\n用户: ' + message + '\n\nAI: 思考中...';
+
+        try {
+            const res = await fetch(BASE + '/api/sessions/' + currentSessionId + '/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+                body: JSON.stringify({ message })
+            });
+            const data = await res.json();
+            // 替换 "思考中..."
+            const text = output.textContent.replace('思考中...', data.reply);
+            output.textContent = text;
+        } catch (e) {
+            output.textContent += '\n错误: ' + e.message;
+        }
+
+        document.getElementById('contextInput').value = '';
+    }
+
+    // 模型列表
+    async function loadModels() {
+        try {
+            const res = await fetch(BASE + '/api/models');
+            const data = await res.json();
+            document.getElementById('modelsOutput').textContent = JSON.stringify(data, null, 2);
+        } catch (e) {
+            document.getElementById('modelsOutput').textContent = '错误: ' + e.message;
+        }
+    }
+
+    // 页面加载时获取模型列表
+    loadModels();
+</script>
+</body>
+</html>

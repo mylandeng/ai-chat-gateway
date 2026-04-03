@@ -1,0 +1,462 @@
+{
+  "info": {
+    "name": "AI Chat Gateway W1",
+    "description": "AI聊天网关 W1 完整API集合\n\n使用前：\n1. 先调用「创建 API Key」获取 key\n2. 将返回的 key 填入 Collection Variables 的 api_key\n3. 即可测试所有需要认证的接口",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "api_key",
+      "value": "",
+      "type": "string",
+      "description": "调用「创建 API Key」后自动填入"
+    },
+    {
+      "key": "session_id",
+      "value": "",
+      "type": "string",
+      "description": "调用「创建会话」后自动填入"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{api_key}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Day3-4 模型管理",
+      "item": [
+        {
+          "name": "获取可用模型列表",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/models",
+              "host": ["{{base_url}}"],
+              "path": ["api", "models"]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "Day3-4：获取所有已配置的模型列表（无需认证）"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Day5 API Key 管理",
+      "item": [
+        {
+          "name": "创建 API Key",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.key) {",
+                  "    pm.collectionVariables.set('api_key', jsonData.key);",
+                  "    console.log('API Key 已自动设置: ' + jsonData.displayKey);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/keys?tenantId=1&name=test-key",
+              "host": ["{{base_url}}"],
+              "path": ["api", "keys"],
+              "query": [
+                { "key": "tenantId", "value": "1" },
+                { "key": "name", "value": "test-key" }
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "创建新的 API Key\n\n⚠️ 返回的完整 key 只展示这一次！\n\n脚本会自动将 key 设置到 Collection Variables 中"
+          }
+        },
+        {
+          "name": "获取 Key 列表",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/keys?tenantId=1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "keys"],
+              "query": [
+                { "key": "tenantId", "value": "1" }
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "获取指定租户的所有 API Key"
+          }
+        },
+        {
+          "name": "禁用 Key",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/keys/ak-替换为实际keyId/disable",
+              "host": ["{{base_url}}"],
+              "path": ["api", "keys", "ak-替换为实际keyId", "disable"]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "禁用指定的 API Key（替换 URL 中的 keyId）"
+          }
+        },
+        {
+          "name": "启用 Key",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/keys/ak-替换为实际keyId/enable",
+              "host": ["{{base_url}}"],
+              "path": ["api", "keys", "ak-替换为实际keyId", "enable"]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "启用指定的 API Key"
+          }
+        },
+        {
+          "name": "删除 Key",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/keys/ak-替换为实际keyId",
+              "host": ["{{base_url}}"],
+              "path": ["api", "keys", "ak-替换为实际keyId"]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "删除指定的 API Key"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Day1 单轮聊天",
+      "item": [
+        {
+          "name": "聊天 - DeepSeek",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"用Java写一个冒泡排序\",\n  \"model\": \"deepseek-chat\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/chat",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chat"]
+            },
+            "description": "Day1：单轮聊天（非流式），使用 DeepSeek 模型"
+          }
+        },
+        {
+          "name": "聊天 - 通义千问",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"解释什么是Spring Boot的依赖注入\",\n  \"model\": \"qwen-plus\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/chat",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chat"]
+            },
+            "description": "Day1：单轮聊天，使用通义千问模型"
+          }
+        },
+        {
+          "name": "聊天 - GPT-4o-mini",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"什么是RESTful API？\",\n  \"model\": \"gpt-4o-mini\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/chat",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chat"]
+            },
+            "description": "Day1：单轮聊天，使用 OpenAI GPT-4o-mini"
+          }
+        },
+        {
+          "name": "聊天 - Claude",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"解释Java的泛型擦除\",\n  \"model\": \"claude-sonnet\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/chat",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chat"]
+            },
+            "description": "Day4：单轮聊天，使用 Claude Sonnet"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Day2 SSE 流式聊天",
+      "item": [
+        {
+          "name": "流式聊天 - DeepSeek",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/chat/stream?message=讲一个关于程序员的笑话&model=deepseek-chat",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chat", "stream"],
+              "query": [
+                { "key": "message", "value": "讲一个关于程序员的笑话" },
+                { "key": "model", "value": "deepseek-chat" }
+              ]
+            },
+            "description": "Day2：SSE 流式聊天\n\n⚠️ Postman 对 SSE 支持有限，建议用 curl 测试：\ncurl -N \"http://localhost:8080/api/chat/stream?message=讲个笑话&model=deepseek-chat\" -H \"Authorization: Bearer <key>\""
+          }
+        },
+        {
+          "name": "流式聊天 - 通义千问",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/chat/stream?message=用三句话介绍Spring Boot&model=qwen-plus",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chat", "stream"],
+              "query": [
+                { "key": "message", "value": "用三句话介绍Spring Boot" },
+                { "key": "model", "value": "qwen-plus" }
+              ]
+            },
+            "description": "Day2：SSE 流式聊天，使用通义千问"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Day6 多轮对话",
+      "item": [
+        {
+          "name": "1. 创建会话",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.sessionId) {",
+                  "    pm.collectionVariables.set('session_id', jsonData.sessionId);",
+                  "    console.log('Session ID 已自动设置: ' + jsonData.sessionId);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/sessions?model=deepseek-chat&systemPrompt=你是一个Java专家，请用简洁的中文回答",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sessions"],
+              "query": [
+                { "key": "model", "value": "deepseek-chat" },
+                { "key": "systemPrompt", "value": "你是一个Java专家，请用简洁的中文回答" }
+              ]
+            },
+            "description": "Day6：创建新的对话会话\n\n脚本会自动将 sessionId 设置到 Collection Variables 中"
+          }
+        },
+        {
+          "name": "2. 第一轮对话",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"我叫张三，我正在学Spring Boot\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/sessions/{{session_id}}/chat",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sessions", "{{session_id}}", "chat"]
+            },
+            "description": "Day6：多轮对话 - 第一轮，自我介绍"
+          }
+        },
+        {
+          "name": "3. 第二轮对话（验证记忆）",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"我叫什么？我在学什么？\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/sessions/{{session_id}}/chat",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sessions", "{{session_id}}", "chat"]
+            },
+            "description": "Day6：多轮对话 - 第二轮，验证AI是否记住了上下文\n\n预期：AI应该回答「你叫张三，正在学Spring Boot」"
+          }
+        },
+        {
+          "name": "4. 第三轮对话（追问）",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"帮我推荐学习Spring Boot的路线\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/sessions/{{session_id}}/chat",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sessions", "{{session_id}}", "chat"]
+            },
+            "description": "Day6：多轮对话 - 第三轮，追问"
+          }
+        },
+        {
+          "name": "5. 获取对话历史",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/sessions/{{session_id}}/messages",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sessions", "{{session_id}}", "messages"]
+            },
+            "description": "Day6：获取完整对话历史记录"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Day5 异常场景测试",
+      "item": [
+        {
+          "name": "无 Key 调用（应返回 401）",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"你好\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/chat",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chat"]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "Day5：测试不带 API Key 的请求，预期返回 401"
+          }
+        },
+        {
+          "name": "无效 Key 调用（应返回 401）",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer sk-invalid-key-12345" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"你好\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/chat",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chat"]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "Day5：测试无效 API Key，预期返回 401"
+          }
+        },
+        {
+          "name": "不存在的模型（应返回错误）",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"你好\",\n  \"model\": \"non-existent-model\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/chat",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chat"]
+            },
+            "description": "测试不存在的模型ID，预期返回错误"
+          }
+        }
+      ]
+    }
+  ]
+}
