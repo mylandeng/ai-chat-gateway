@@ -85,9 +85,22 @@ rag:
   chunk:
     size: 500
     overlap: 50
+  hybrid:
+    enabled: true          # 是否启用混合检索（向量+BM25）
+    vector-weight: 0.7      # 向量检索权重
+    bm25-weight: 0.3        # BM25 关键词检索权重
+  rerank:
+    enabled: true            # 是否启用 Rerank 重排序
+    provider: cohere         # cohere | local（模力方舟兼容 cohere 格式）
+    api-key: ${RERANK_API_KEY:}
+    base-url: https://ai.gitee.com     # 代码拼接 /v1/rerank
+    model: Qwen3-Reranker-4B
+  chat:
+    history-rounds: 5          # 多轮对话历史保留轮数
+    rewrite-enabled: true      # 是否启用 query 改写
   retrieval:
     max-results: 5
-    min-score: 0.0
+    min-score: 0.75
   document:
     upload-dir: ./uploads
     max-file-size: 50MB

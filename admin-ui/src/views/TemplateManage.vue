@@ -3,31 +3,30 @@
     <el-card>
       <template #header>
         <div style="display: flex; justify-content: space-between; align-items: center">
-          <div>
-            <span>Prompt 模板管理</span>
-            <el-radio-group v-model="tab" size="small" style="margin-left: 16px">
+          <div style="display: flex; align-items: center; gap: 16px">
+            <span>提示词模板</span>
+            <el-radio-group v-model="tab" size="small">
               <el-radio-button value="my">我的模板</el-radio-button>
               <el-radio-button value="market">模板市场</el-radio-button>
             </el-radio-group>
           </div>
-          <el-button type="primary" @click="openEditor()">新建模板</el-button>
+          <el-button type="primary" size="small" @click="openEditor()">新建模板</el-button>
         </div>
       </template>
 
       <el-row :gutter="16">
         <el-col :span="8" v-for="tpl in templates" :key="tpl.id">
-          <el-card shadow="hover" class="tpl-card" @click="openEditor(tpl)">
-            <template #header>
-              <div style="display: flex; justify-content: space-between; align-items: center">
-                <span>{{ tpl.name }}</span>
-                <el-tag size="small">{{ tpl.category }}</el-tag>
-              </div>
-            </template>
-            <p style="color: #666; font-size: 13px; margin: 0">{{ tpl.description }}</p>
-            <div style="color: #999; font-size: 12px; margin-top: 8px">
-              v{{ tpl.version }} | {{ tpl.isPublic ? '公开' : '私有' }}
+          <div class="nx-tpl-card nx-panel" @click="openEditor(tpl)">
+            <div class="nx-tpl-header">
+              <span class="nx-tpl-name">{{ tpl.name }}</span>
+              <el-tag size="small">{{ tpl.category }}</el-tag>
             </div>
-          </el-card>
+            <p class="nx-tpl-desc">{{ tpl.description }}</p>
+            <div class="nx-tpl-meta">
+              <span class="nx-mono">v{{ tpl.version }}</span>
+              <span>{{ tpl.isPublic ? '公开' : '私有' }}</span>
+            </div>
+          </div>
         </el-col>
       </el-row>
     </el-card>
@@ -119,6 +118,42 @@ async function del() {
 </script>
 
 <style scoped>
-.tpl-card { margin-bottom: 16px; cursor: pointer; }
-.tpl-card:hover { border-color: #1890ff; }
+.nx-tpl-card {
+  padding: 16px;
+  margin-bottom: 16px;
+  cursor: pointer;
+  transition: border-color 150ms;
+}
+.nx-tpl-card:hover {
+  border-color: var(--nx-accent-amber);
+}
+.nx-tpl-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.nx-tpl-name {
+  font-weight: 600;
+  color: var(--nx-text-primary);
+}
+.nx-tpl-desc {
+  color: var(--nx-text-secondary);
+  font-size: 13px;
+  margin: 0 0 8px;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.nx-tpl-meta {
+  font-family: var(--nx-font-mono);
+  font-size: 11px;
+  color: var(--nx-text-muted);
+  display: flex;
+  gap: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
 </style>

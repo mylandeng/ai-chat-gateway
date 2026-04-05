@@ -1,0 +1,302 @@
+{
+	"info": {
+		"name": "AI Chat Gateway - W4 企业知识库",
+		"description": "W4 企业知识库问答系统 API 集合：知识库CRUD、文档管理、多轮对话、分享、RAG Debug",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:8080"
+		},
+		{
+			"key": "apiKey",
+			"value": "your-api-key-here"
+		},
+		{
+			"key": "kbId",
+			"value": "1"
+		},
+		{
+			"key": "sessionId",
+			"value": ""
+		},
+		{
+			"key": "shareToken",
+			"value": ""
+		}
+	],
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{apiKey}}"
+			}
+		]
+	},
+	"item": [
+		{
+			"name": "1. 知识库管理",
+			"item": [
+				{
+					"name": "创建知识库",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"测试知识库\",\n  \"description\": \"用于W4功能测试\"\n}"
+						},
+						"url": "{{baseUrl}}/api/rag/kb"
+					}
+				},
+				{
+					"name": "获取知识库列表",
+					"request": {
+						"method": "GET",
+						"url": "{{baseUrl}}/api/rag/kb"
+					}
+				},
+				{
+					"name": "获取知识库详情",
+					"request": {
+						"method": "GET",
+						"url": "{{baseUrl}}/api/rag/kb/{{kbId}}"
+					}
+				},
+				{
+					"name": "更新知识库",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"更新后的名称\",\n  \"description\": \"更新后的描述\"\n}"
+						},
+						"url": "{{baseUrl}}/api/rag/kb/{{kbId}}"
+					}
+				},
+				{
+					"name": "删除知识库",
+					"request": {
+						"method": "DELETE",
+						"url": "{{baseUrl}}/api/rag/kb/{{kbId}}"
+					}
+				}
+			]
+		},
+		{
+			"name": "2. 知识库文档管理",
+			"item": [
+				{
+					"name": "上传文档到知识库",
+					"request": {
+						"method": "POST",
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "file",
+									"type": "file",
+									"src": ""
+								}
+							]
+						},
+						"url": "{{baseUrl}}/api/rag/kb/{{kbId}}/documents/upload"
+					}
+				},
+				{
+					"name": "获取知识库文档列表",
+					"request": {
+						"method": "GET",
+						"url": "{{baseUrl}}/api/rag/kb/{{kbId}}/documents"
+					}
+				},
+				{
+					"name": "删除知识库文档",
+					"request": {
+						"method": "DELETE",
+						"url": "{{baseUrl}}/api/rag/kb/{{kbId}}/documents/1"
+					}
+				}
+			]
+		},
+		{
+			"name": "3. 多轮对话",
+			"item": [
+				{
+					"name": "非流式对话（新会话）",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"question\": \"这个知识库主要讲什么？\",\n  \"model\": \"deepseek-chat\"\n}"
+						},
+						"url": "{{baseUrl}}/api/rag/kb/{{kbId}}/chat"
+					}
+				},
+				{
+					"name": "非流式对话（续会话）",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"question\": \"能详细说说吗？\",\n  \"sessionId\": {{sessionId}},\n  \"model\": \"deepseek-chat\"\n}"
+						},
+						"url": "{{baseUrl}}/api/rag/kb/{{kbId}}/chat"
+					}
+				},
+				{
+					"name": "流式对话",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{baseUrl}}/api/rag/kb/{{kbId}}/stream?q=这个文档讲了什么&model=deepseek-chat",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "rag", "kb", "{{kbId}}", "stream"],
+							"query": [
+								{ "key": "q", "value": "这个文档讲了什么" },
+								{ "key": "model", "value": "deepseek-chat" },
+								{ "key": "sessionId", "value": "{{sessionId}}", "disabled": true }
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "4. 对话历史",
+			"item": [
+				{
+					"name": "获取会话列表",
+					"request": {
+						"method": "GET",
+						"url": "{{baseUrl}}/api/rag/kb/{{kbId}}/sessions"
+					}
+				},
+				{
+					"name": "获取会话消息",
+					"request": {
+						"method": "GET",
+						"url": "{{baseUrl}}/api/rag/kb/{{kbId}}/sessions/{{sessionId}}/messages"
+					}
+				},
+				{
+					"name": "删除会话",
+					"request": {
+						"method": "DELETE",
+						"url": "{{baseUrl}}/api/rag/kb/{{kbId}}/sessions/{{sessionId}}"
+					}
+				}
+			]
+		},
+		{
+			"name": "5. 分享设置",
+			"item": [
+				{
+					"name": "开启分享",
+					"request": {
+						"method": "POST",
+						"url": {
+							"raw": "{{baseUrl}}/api/rag/kb/{{kbId}}/share?enabled=true",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "rag", "kb", "{{kbId}}", "share"],
+							"query": [
+								{ "key": "enabled", "value": "true" }
+							]
+						}
+					}
+				},
+				{
+					"name": "关闭分享",
+					"request": {
+						"method": "POST",
+						"url": {
+							"raw": "{{baseUrl}}/api/rag/kb/{{kbId}}/share?enabled=false",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "rag", "kb", "{{kbId}}", "share"],
+							"query": [
+								{ "key": "enabled", "value": "false" }
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "6. 分享链接访问（无需 API Key）",
+			"item": [
+				{
+					"name": "获取分享知识库信息",
+					"request": {
+						"method": "GET",
+						"url": "{{baseUrl}}/api/rag/share/{{shareToken}}/info",
+						"auth": { "type": "noauth" }
+					}
+				},
+				{
+					"name": "分享链接对话",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"question\": \"你好，请介绍一下这个知识库\",\n  \"model\": \"deepseek-chat\"\n}"
+						},
+						"url": "{{baseUrl}}/api/rag/share/{{shareToken}}/chat",
+						"auth": { "type": "noauth" }
+					}
+				},
+				{
+					"name": "分享链接流式对话",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{baseUrl}}/api/rag/share/{{shareToken}}/stream?q=你好",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "rag", "share", "{{shareToken}}", "stream"],
+							"query": [
+								{ "key": "q", "value": "你好" },
+								{ "key": "model", "value": "deepseek-chat", "disabled": true }
+							]
+						},
+						"auth": { "type": "noauth" }
+					}
+				}
+			]
+		},
+		{
+			"name": "7. RAG Debug",
+			"item": [
+				{
+					"name": "RAG 调试分析",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{baseUrl}}/api/rag/kb/{{kbId}}/debug?q=这个文档讲了什么&model=deepseek-chat",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "rag", "kb", "{{kbId}}", "debug"],
+							"query": [
+								{ "key": "q", "value": "这个文档讲了什么" },
+								{ "key": "model", "value": "deepseek-chat" }
+							]
+						}
+					}
+				}
+			]
+		}
+	]
+}

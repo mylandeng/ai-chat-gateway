@@ -81,6 +81,28 @@ public class VectorStoreService {
     }
 
     /**
+     * 按知识库 ID 过滤的相似度检索（W4）
+     */
+    public List<EmbeddingMatch<TextSegment>> searchByKb(String query, int maxResults, double minScore, Long kbId) {
+        log.debug("[向量检索] query='{}', maxResults={}, minScore={}, kbId={}", query, maxResults, minScore, kbId);
+
+        Embedding queryEmbedding = embeddingModel.embed(query).content();
+
+        EmbeddingSearchRequest request = EmbeddingSearchRequest.builder()
+                .queryEmbedding(queryEmbedding)
+                .maxResults(maxResults)
+                .minScore(minScore)
+                .filter(new MetadataFilterBuilder("kb_id").isEqualTo(String.valueOf(kbId)))
+                .build();
+
+        EmbeddingSearchResult<TextSegment> result = embeddingStore.search(request);
+        List<EmbeddingMatch<TextSegment>> matches = result.matches();
+
+        log.info("[向量检索] 找到 {} 个匹配结果 (kbId={})", matches.size(), kbId);
+        return matches;
+    }
+
+    /**
      * 不带租户过滤的检索（向后兼容）
      */
     public List<EmbeddingMatch<TextSegment>> search(String query, int maxResults, double minScore) {

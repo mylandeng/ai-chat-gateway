@@ -208,6 +208,103 @@
       ]
     },
     {
+      "name": "Day20 文档进度",
+      "description": "Day20 新增：文档处理进度查询",
+      "item": [
+        {
+          "name": "文档处理进度",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('返回进度信息', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.id).to.be.above(0);",
+                  "    pm.expect(jsonData.statusText).to.be.a('string');",
+                  "});",
+                  "",
+                  "var jsonData = pm.response.json();",
+                  "console.log('状态: ' + jsonData.statusText + ', 字符数: ' + jsonData.charCount + ', 切片数: ' + jsonData.chunkCount);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/rag/documents/{{doc_id}}/progress",
+              "host": ["{{base_url}}"],
+              "path": ["api", "rag", "documents", "{{doc_id}}", "progress"]
+            },
+            "description": "查询指定文档的处理进度\n\n返回：\n- status: 数字状态码 (0/1/2/-1)\n- statusText: 中文状态描述\n- charCount: 已解析字符数\n- chunkCount: 已切片数\n- errorMessage: 失败时的错误信息"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Day21 混合检索",
+      "description": "Day21 新增：混合检索(向量+BM25) + Rerank 重排序\n\n需先在 application.yml 中开启：\nrag.hybrid.enabled=true\nrag.rerank.enabled=true",
+      "item": [
+        {
+          "name": "混合检索问答（语义匹配）",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/rag/chat?q=公司的注册资本是多少&model=deepseek-chat",
+              "host": ["{{base_url}}"],
+              "path": ["api", "rag", "chat"],
+              "query": [
+                { "key": "q", "value": "公司的注册资本是多少", "description": "语义匹配测试" },
+                { "key": "model", "value": "deepseek-chat" }
+              ]
+            },
+            "description": "测试语义匹配场景（向量检索擅长）\n\n开启混合检索后，同时使用向量+BM25，加权合并结果"
+          }
+        },
+        {
+          "name": "混合检索问答（精确匹配）",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/rag/chat?q=2010年1月15日发生了什么&model=deepseek-chat",
+              "host": ["{{base_url}}"],
+              "path": ["api", "rag", "chat"],
+              "query": [
+                { "key": "q", "value": "2010年1月15日发生了什么", "description": "精确匹配测试 - 日期/数字" },
+                { "key": "model", "value": "deepseek-chat" }
+              ]
+            },
+            "description": "测试精确匹配场景（BM25 擅长）\n\n纯向量检索对日期/数字匹配较弱，混合检索可补充关键词精确匹配"
+          }
+        },
+        {
+          "name": "混合检索问答（流式SSE）",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "text/event-stream" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/rag/stream?q=总结文档的关键信息&model=deepseek-chat",
+              "host": ["{{base_url}}"],
+              "path": ["api", "rag", "stream"],
+              "query": [
+                { "key": "q", "value": "总结文档的关键信息" },
+                { "key": "model", "value": "deepseek-chat" }
+              ]
+            },
+            "description": "混合检索 + 流式输出\n\n混合检索对流式问答同样生效（检索阶段完成后再流式生成）"
+          }
+        }
+      ]
+    },
+    {
       "name": "Day20 测试场景",
       "description": "端到端测试场景，按顺序执行",
       "item": [

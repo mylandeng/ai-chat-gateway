@@ -43,9 +43,22 @@ public class IndexingPipeline {
     }
 
     /**
-     * 保存上传文件并创建数据库记录
+     * 保存上传文件并创建数据库记录（关联知识库）
+     */
+    public KnowledgeDocument saveFile(MultipartFile file, Long tenantId, Long kbId) {
+        KnowledgeDocument doc = saveFileInternal(file, tenantId);
+        doc.setKbId(kbId);
+        return documentRepo.save(doc);
+    }
+
+    /**
+     * 保存上传文件并创建数据库记录（向后兼容，不关联知识库）
      */
     public KnowledgeDocument saveFile(MultipartFile file, Long tenantId) {
+        return saveFileInternal(file, tenantId);
+    }
+
+    private KnowledgeDocument saveFileInternal(MultipartFile file, Long tenantId) {
         // 保存文件到本地（转绝对路径，避免 Windows 下被解析到 Tomcat 临时目录）
         String storedName = UUID.randomUUID().toString().replace("-", "") + "_" + file.getOriginalFilename();
         Path filePath = Path.of(uploadDir, storedName).toAbsolutePath().normalize();
@@ -88,12 +101,16 @@ public class IndexingPipeline {
             documentRepo.save(doc);
             log.info("[Indexing] 解析完成: id={}, 字符数={}", docId, text.length());
 
-            // Step 2: 文本切片（metadata 中带 tenant_id 用于检索隔离）
-            List<TextSegment> segments = chunkService.splitText(text, Map.of(
+            // Step 2: 文本切片（metadata 中带 tenant_id/kb_id 用于检索隔离）
+            Map<String, String> metadata = new java.util.HashMap<>(Map.of(
                     "doc_id", String.valueOf(doc.getId()),
                     "tenant_id", String.valueOf(doc.getTenantId()),
                     "file_name", doc.getFileName()
             ));
+            if (doc.getKbId() != null) {
+                metadata.put("kb_id", String.valueOf(doc.getKbId()));
+            }
+            List<TextSegment> segments = chunkService.splitText(text, metadata);
             doc.setChunkCount(segments.size());
             documentRepo.save(doc);
             log.info("[Indexing] 切片完成: id={}, 切片数={}", docId, segments.size());

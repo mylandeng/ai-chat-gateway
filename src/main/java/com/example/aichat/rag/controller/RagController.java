@@ -2,6 +2,7 @@ package com.example.aichat.rag.controller;
 
 import com.example.aichat.context.RequestContext;
 import com.example.aichat.rag.model.KnowledgeDocument;
+import com.example.aichat.rag.model.RagResponse;
 import com.example.aichat.rag.repository.KnowledgeDocumentRepository;
 import com.example.aichat.rag.service.IndexingPipeline;
 import com.example.aichat.rag.service.RagService;
@@ -72,14 +73,45 @@ public class RagController {
         return Map.of("status", "deleted");
     }
 
+    /**
+     * 文档处理进度查询
+     */
+    @GetMapping("/documents/{id}/progress")
+    public Map<String, Object> getProgress(@PathVariable Long id) {
+        Long tenantId = RequestContext.get("tenantId");
+        KnowledgeDocument doc = documentRepo.findById(id).orElse(null);
+        if (doc == null || !doc.getTenantId().equals(tenantId)) {
+            return Map.of("status", "not_found");
+        }
+
+        String statusText = switch (doc.getStatus()) {
+            case 0 -> "上传中";
+            case 1 -> "解析完成";
+            case 2 -> "已向量化";
+            case -1 -> "处理失败";
+            default -> "未知";
+        };
+
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("id", doc.getId());
+        result.put("fileName", doc.getFileName());
+        result.put("status", doc.getStatus());
+        result.put("statusText", statusText);
+        result.put("charCount", doc.getCharCount());
+        result.put("chunkCount", doc.getChunkCount());
+        result.put("errorMessage", doc.getErrorMessage());
+        result.put("updatedAt", doc.getUpdatedAt());
+        return result;
+    }
+
     // ========== RAG 问答 ==========
 
     /**
      * RAG 问答（非流式）
      */
     @GetMapping("/chat")
-    public Map<String, Object> chat(@RequestParam String q,
-                                    @RequestParam(required = false) String model) {
+    public RagResponse chat(@RequestParam String q,
+                            @RequestParam(required = false) String model) {
         Long tenantId = RequestContext.get("tenantId");
         return ragService.chat(q, model, tenantId);
     }

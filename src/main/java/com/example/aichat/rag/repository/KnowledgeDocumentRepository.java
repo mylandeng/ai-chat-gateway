@@ -8,4 +8,10 @@ import java.util.List;
 public interface KnowledgeDocumentRepository extends JpaRepository<KnowledgeDocument, Long> {
 
     List<KnowledgeDocument> findByTenantIdOrderByCreatedAtDesc(Long tenantId);
+
+    List<KnowledgeDocument> findByKbIdOrderByCreatedAtDesc(Long kbId);
+
+    int countByKbId(Long kbId);
+
+    void deleteByKbId(Long kbId);
 }

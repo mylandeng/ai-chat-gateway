@@ -1,38 +1,52 @@
 <template>
-  <div class="chat-page">
+  <div class="nx-chat-page">
     <!-- 工具栏 -->
-    <el-card class="toolbar" style="margin-bottom: 16px">
-      <el-select v-model="model" style="width: 180px; margin-right: 12px">
-        <el-option label="DeepSeek Chat" value="deepseek-chat" />
-        <el-option label="通义千问" value="qwen-plus" />
-        <el-option label="GPT-4o Mini" value="gpt-4o-mini" />
-        <el-option label="Claude Sonnet" value="claude-sonnet" />
-      </el-select>
-      <el-button @click="clearChat">清空对话</el-button>
-    </el-card>
-
-    <!-- 消息列表 -->
-    <div class="messages" ref="messagesRef">
-      <div v-if="messages.length === 0" style="text-align: center; color: #999; padding: 60px 0">
-        选择模型，开始对话
+    <div class="nx-toolbar nx-panel">
+      <div class="nx-toolbar-left">
+        <span class="nx-section-title">直接对话</span>
       </div>
-      <div v-for="(msg, i) in messages" :key="i"
-           :class="['message', msg.role]">
-        <div class="avatar">{{ msg.role === 'user' ? 'U' : 'AI' }}</div>
-        <div class="bubble">
-          <pre style="white-space: pre-wrap; margin: 0; font-family: inherit">{{ msg.content }}</pre>
-          <span v-if="msg.role === 'assistant' && i === messages.length - 1 && isStreaming"
-            class="cursor">|</span>
+      <div class="nx-toolbar-right">
+        <el-select v-model="model" size="small" style="width: 180px">
+          <el-option label="DeepSeek Chat" value="deepseek-chat" />
+          <el-option label="通义千问" value="qwen-plus" />
+          <el-option label="GPT-4o Mini" value="gpt-4o-mini" />
+          <el-option label="Claude Sonnet" value="claude-sonnet" />
+        </el-select>
+        <el-button size="small" @click="clearChat">清空</el-button>
+      </div>
+    </div>
+
+    <!-- 消息日志区 -->
+    <div class="nx-log-area" ref="messagesRef">
+      <div v-if="messages.length === 0" class="nx-empty">
+        <div class="nx-empty-icon">_</div>
+        <div>选择模型 // 开始对话</div>
+      </div>
+
+      <div v-for="(msg, i) in messages" :key="i" class="nx-log-entry">
+        <div class="nx-log-header">
+          <span :class="['nx-log-role', msg.role]">
+            {{ msg.role === 'user' ? '> 用户' : '  系统' }}
+          </span>
+          <span class="nx-log-time">{{ msg.time }}</span>
+          <span class="nx-log-rule"></span>
+        </div>
+        <div class="nx-log-body" :class="{ 'user-text': msg.role === 'user' }">
+          <template v-if="msg.role === 'user'">{{ msg.content }}</template>
+          <template v-else>
+            <span>{{ msg.content }}</span>
+            <span v-if="i === messages.length - 1 && isStreaming" class="nx-log-cursor"></span>
+          </template>
         </div>
       </div>
     </div>
 
     <!-- 输入栏 -->
-    <div class="input-bar">
-      <el-input v-model="inputMsg" placeholder="输入消息... (Enter 发送)"
-        @keyup.enter="send" :disabled="isStreaming" size="large" />
-      <el-button type="primary" @click="send" :loading="isStreaming" size="large"
-        style="margin-left: 12px">发送</el-button>
+    <div class="nx-input-bar">
+      <span class="nx-input-prompt">></span>
+      <el-input v-model="inputMsg" placeholder="输入消息..."
+        @keyup.enter="send" :disabled="isStreaming" />
+      <el-button type="primary" @click="send" :loading="isStreaming">发送</el-button>
     </div>
   </div>
 </template>
@@ -46,15 +60,17 @@ const model = ref('deepseek-chat')
 const isStreaming = ref(false)
 const messagesRef = ref(null)
 
+function now() {
+  return new Date().toLocaleTimeString('en-GB', { hour12: false })
+}
+
 function clearChat() {
   messages.value = []
 }
 
 function scrollToBottom() {
   nextTick(() => {
-    if (messagesRef.value) {
-      messagesRef.value.scrollTop = messagesRef.value.scrollHeight
-    }
+    if (messagesRef.value) messagesRef.value.scrollTop = messagesRef.value.scrollHeight
   })
 }
 
@@ -63,8 +79,8 @@ async function send() {
 
   const userMsg = inputMsg.value
   inputMsg.value = ''
-  messages.value.push({ role: 'user', content: userMsg })
-  messages.value.push({ role: 'assistant', content: '' })
+  messages.value.push({ role: 'user', content: userMsg, time: now() })
+  messages.value.push({ role: 'assistant', content: '', time: now() })
   scrollToBottom()
 
   isStreaming.value = true
@@ -78,7 +94,7 @@ async function send() {
 
     if (!resp.ok) {
       const last = messages.value[messages.value.length - 1]
-      last.content = resp.status === 401 ? '请在左下角输入有效的 API Key' : `请求失败 (${resp.status})`
+      last.content = resp.status === 401 ? '[错误] 未授权 — 请在侧栏设置 API Key' : `[错误] 请求失败 (${resp.status})`
       isStreaming.value = false
       return
     }
@@ -93,7 +109,7 @@ async function send() {
       buffer += decoder.decode(value, { stream: true })
 
       const lines = buffer.split('\n')
-      buffer = lines.pop() // 保留未完整的行
+      buffer = lines.pop()
 
       for (const line of lines) {
         if (!line.startsWith('data:')) continue
@@ -104,7 +120,7 @@ async function send() {
           const last = messages.value[messages.value.length - 1]
           last.content += parsed.content || ''
           scrollToBottom()
-        } catch (e) { /* ignore parse errors */ }
+        } catch (e) { /* ignore */ }
       }
     }
 
@@ -116,18 +132,68 @@ async function send() {
 </script>
 
 <style scoped>
-.chat-page { display: flex; flex-direction: column; height: calc(100vh - 100px); }
-.messages { flex: 1; overflow-y: auto; padding: 16px; background: #fff; border-radius: 8px; margin-bottom: 16px; }
-.message { display: flex; margin-bottom: 16px; gap: 12px; }
-.message.user { flex-direction: row-reverse; }
-.avatar { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
-  font-size: 14px; font-weight: bold; flex-shrink: 0; }
-.message.user .avatar { background: #1890ff; color: #fff; }
-.message.assistant .avatar { background: #52c41a; color: #fff; }
-.bubble { max-width: 70%; padding: 10px 14px; border-radius: 8px; line-height: 1.6; }
-.message.user .bubble { background: #e6f7ff; }
-.message.assistant .bubble { background: #f6ffed; }
-.input-bar { display: flex; }
-.cursor { animation: blink 1s infinite; }
-@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+.nx-chat-page {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 100px);
+  gap: 0;
+}
+
+.nx-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  margin-bottom: 0;
+  border-bottom: none;
+  flex-shrink: 0;
+}
+.nx-toolbar-right {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.nx-log-area {
+  flex: 1;
+  background: var(--nx-bg-deep);
+  border: 1px solid var(--nx-border);
+  border-radius: 2px;
+  padding: 20px;
+  overflow-y: auto;
+  margin: 12px 0;
+}
+
+.nx-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--nx-text-muted);
+  font-family: var(--nx-font-mono);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  gap: 12px;
+}
+.nx-empty-icon {
+  font-size: 32px;
+  color: var(--nx-accent-amber);
+  animation: nx-pulse 2s infinite;
+}
+
+.nx-input-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.nx-input-prompt {
+  font-family: var(--nx-font-mono);
+  font-size: 16px;
+  color: var(--nx-accent-amber);
+  font-weight: 600;
+  flex-shrink: 0;
+}
 </style>

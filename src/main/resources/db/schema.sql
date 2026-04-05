@@ -58,10 +58,11 @@ CREATE TABLE IF NOT EXISTS chat_message (
     INDEX idx_session (session_id, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- W3: 知识文档表
+-- W3: 知识文档表 (W4: 增加 kb_id 字段)
 CREATE TABLE IF NOT EXISTS knowledge_document (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     tenant_id BIGINT NOT NULL COMMENT '所属租户',
+    kb_id BIGINT COMMENT '所属知识库（W4新增）',
     file_name VARCHAR(255) NOT NULL COMMENT '原始文件名',
     file_path VARCHAR(500) COMMENT '存储路径',
     file_size BIGINT COMMENT '文件大小(bytes)',
@@ -72,5 +73,44 @@ CREATE TABLE IF NOT EXISTS knowledge_document (
     error_message VARCHAR(1000) COMMENT '失败原因',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_tenant (tenant_id)
+    INDEX idx_tenant (tenant_id),
+    INDEX idx_kb (kb_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- W4: 知识库表
+CREATE TABLE IF NOT EXISTS knowledge_base (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id BIGINT NOT NULL COMMENT '所属租户',
+    name VARCHAR(200) NOT NULL COMMENT '知识库名称',
+    description VARCHAR(500) COMMENT '描述',
+    doc_count INT DEFAULT 0 COMMENT '文档数量',
+    visibility VARCHAR(20) DEFAULT 'private' COMMENT 'private/shared',
+    share_token VARCHAR(64) COMMENT '分享令牌',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_tenant (tenant_id),
+    UNIQUE INDEX idx_share_token (share_token)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- W4: RAG 对话会话表
+CREATE TABLE IF NOT EXISTS rag_chat_session (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    kb_id BIGINT NOT NULL COMMENT '所属知识库',
+    tenant_id BIGINT NOT NULL COMMENT '所属租户',
+    title VARCHAR(200) COMMENT '会话标题（首条问题截取）',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_kb_tenant (kb_id, tenant_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- W4: RAG 对话消息表
+CREATE TABLE IF NOT EXISTS rag_chat_message (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    session_id BIGINT NOT NULL COMMENT '所属会话',
+    role VARCHAR(20) NOT NULL COMMENT 'user/assistant',
+    content TEXT NOT NULL COMMENT '消息内容',
+    rewritten_query VARCHAR(500) COMMENT '改写后的查询（仅 user 消息）',
+    sources TEXT COMMENT '引用来源 JSON（仅 assistant 消息）',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_session (session_id, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

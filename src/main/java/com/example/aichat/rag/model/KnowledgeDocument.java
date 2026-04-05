@@ -16,6 +16,9 @@ public class KnowledgeDocument {
     @Column(name = "tenant_id", nullable = false)
     private Long tenantId;
 
+    @Column(name = "kb_id")
+    private Long kbId;
+
     @Column(name = "file_name", nullable = false)
     private String fileName;
 

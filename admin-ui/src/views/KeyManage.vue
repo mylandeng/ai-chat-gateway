@@ -4,13 +4,21 @@
       <template #header>
         <div style="display: flex; justify-content: space-between; align-items: center">
           <span>API Key 管理</span>
-          <el-button type="primary" @click="showCreateDialog = true">创建 Key</el-button>
+          <el-button type="primary" size="small" @click="showCreateDialog = true">创建 Key</el-button>
         </div>
       </template>
 
       <el-table :data="keys" stripe>
-        <el-table-column prop="keyId" label="Key ID" width="220" />
-        <el-table-column prop="displayKey" label="Key" width="140" />
+        <el-table-column prop="keyId" label="Key 标识" width="220">
+          <template #default="{ row }">
+            <span class="nx-mono">{{ row.keyId }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="displayKey" label="密钥" width="140">
+          <template #default="{ row }">
+            <span class="nx-mono" style="color: var(--nx-text-muted)">{{ row.displayKey }}</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="name" label="名称" />
         <el-table-column prop="status" label="状态" width="80">
           <template #default="{ row }">
@@ -19,8 +27,16 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="rateLimit" label="限流(/min)" width="100" />
-        <el-table-column prop="lastUsedAt" label="最近使用" width="180" />
+        <el-table-column prop="rateLimit" label="频率/分" width="100">
+          <template #default="{ row }">
+            <span class="nx-mono">{{ row.rateLimit }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="lastUsedAt" label="最后使用" width="180">
+          <template #default="{ row }">
+            <span class="nx-mono" style="font-size: 12px; color: var(--nx-text-muted)">{{ row.lastUsedAt || '—' }}</span>
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="200">
           <template #default="{ row }">
             <el-button v-if="row.status === 1" size="small" type="warning"
@@ -51,9 +67,9 @@
     </el-dialog>
 
     <!-- Key 显示 -->
-    <el-dialog v-model="showKeyResult" title="创建成功" width="500px">
+    <el-dialog v-model="showKeyResult" title="Key 已创建" width="500px">
       <el-alert type="warning" :closable="false" description="请立即复制保存，此 Key 只显示一次！" style="margin-bottom: 16px" />
-      <el-input v-model="newKey" readonly>
+      <el-input v-model="newKey" readonly class="nx-mono">
         <template #append>
           <el-button @click="copyKey">复制</el-button>
         </template>

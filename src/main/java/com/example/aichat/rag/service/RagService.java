@@ -1,5 +1,9 @@
 package com.example.aichat.rag.service;
 
+import com.example.aichat.rag.model.HybridMatch;
+import com.example.aichat.rag.model.RagResponse;
+import com.example.aichat.rag.model.RagSource;
+import com.example.aichat.rag.model.RerankResult;
 import com.example.aichat.service.ChatModelFactory;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.segment.TextSegment;
@@ -26,6 +30,8 @@ public class RagService {
 
     private final VectorStoreService vectorStoreService;
     private final ChatModelFactory modelFactory;
+    private final HybridRetrievalService hybridRetrievalService;
+    private final RerankService rerankService;
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
     @Value("${rag.retrieval.max-results:5}")
@@ -33,6 +39,12 @@ public class RagService {
 
     @Value("${rag.retrieval.min-score:0.6}")
     private double minScore;
+
+    @Value("${rag.hybrid.enabled:false}")
+    private boolean hybridEnabled;
+
+    @Value("${rag.rerank.enabled:false}")
+    private boolean rerankEnabled;
 
     private static final String DEFAULT_MODEL = "deepseek-chat";
 
@@ -49,51 +61,39 @@ public class RagService {
             %s
             """;
 
-    public RagService(VectorStoreService vectorStoreService, ChatModelFactory modelFactory) {
+    public RagService(VectorStoreService vectorStoreService,
+                      ChatModelFactory modelFactory,
+                      HybridRetrievalService hybridRetrievalService,
+                      RerankService rerankService) {
         this.vectorStoreService = vectorStoreService;
         this.modelFactory = modelFactory;
+        this.hybridRetrievalService = hybridRetrievalService;
+        this.rerankService = rerankService;
     }
 
     /**
      * RAG 问答（非流式）
      */
-    public Map<String, Object> chat(String question, String modelId, Long tenantId) {
+    public RagResponse chat(String question, String modelId, Long tenantId) {
         modelId = modelId != null ? modelId : DEFAULT_MODEL;
         log.info("[RAG] 问答: question='{}', model={}, tenantId={}", question, modelId, tenantId);
 
-        // 1. 向量检索（带租户隔离）
-        List<EmbeddingMatch<TextSegment>> matches =
-                vectorStoreService.search(question, maxResults, minScore, tenantId);
-
-        if (matches.isEmpty()) {
+        // 1. 检索（向量 or 混合）
+        RetrievalContext ctx = retrieve(question, tenantId);
+        if (ctx.contextTexts.isEmpty()) {
             log.info("[RAG] 未找到相关文档");
-            return Map.of(
-                    "answer", "知识库中没有找到与您问题相关的内容，请先上传相关文档。",
-                    "sources", List.of(),
-                    "question", question
-            );
+            return new RagResponse("知识库中没有找到与您问题相关的内容，请先上传相关文档。",
+                    List.of(), question);
         }
 
         // 2. 构建上下文
-        StringBuilder context = new StringBuilder();
-        List<Map<String, Object>> sources = new ArrayList<>();
-
-        for (int i = 0; i < matches.size(); i++) {
-            EmbeddingMatch<TextSegment> match = matches.get(i);
-            TextSegment segment = match.embedded();
-            context.append(String.format("[%d] %s\n\n", i + 1, segment.text()));
-
-            sources.add(Map.of(
-                    "fileName", segment.metadata().getString("file_name") != null ?
-                            segment.metadata().getString("file_name") : "未知",
-                    "score", Math.round(match.score() * 100) / 100.0,
-                    "preview", segment.text().substring(0,
-                            Math.min(100, segment.text().length())) + "..."
-            ));
+        StringBuilder contextStr = new StringBuilder();
+        for (int i = 0; i < ctx.contextTexts.size(); i++) {
+            contextStr.append(String.format("[%d] %s\n\n", i + 1, ctx.contextTexts.get(i)));
         }
 
         // 3. 调用 LLM
-        String systemPrompt = String.format(RAG_SYSTEM_PROMPT, context);
+        String systemPrompt = String.format(RAG_SYSTEM_PROMPT, contextStr);
         ChatLanguageModel model = modelFactory.getModel(modelId);
 
         List<dev.langchain4j.data.message.ChatMessage> messages = List.of(
@@ -102,13 +102,9 @@ public class RagService {
         );
 
         String answer = model.generate(messages).content().text();
-        log.info("[RAG] 回答生成完成, 来源数={}", sources.size());
+        log.info("[RAG] 回答生成完成, 来源数={}", ctx.sources.size());
 
-        return Map.of(
-                "answer", answer,
-                "sources", sources,
-                "question", question
-        );
+        return new RagResponse(answer, ctx.sources, question);
     }
 
     /**
@@ -121,18 +117,12 @@ public class RagService {
 
         final String finalModelId = modelId;
 
-        // 用线程池执行，显式传入 tenantId 避免 ThreadLocal 丢失
         executor.submit(() -> {
             try {
-                // 1. 向量检索（带租户隔离）
-                List<EmbeddingMatch<TextSegment>> matches =
-                        vectorStoreService.search(question, maxResults, minScore, tenantId);
+                // 1. 检索（向量 or 混合）
+                RetrievalContext ctx = retrieve(question, tenantId);
 
-                // 先发送来源信息
-                List<Map<String, Object>> sources = new ArrayList<>();
-                StringBuilder context = new StringBuilder();
-
-                if (matches.isEmpty()) {
+                if (ctx.contextTexts.isEmpty()) {
                     emitter.send(SseEmitter.event().data(
                             Map.of("content", "知识库中没有找到与您问题相关的内容，请先上传相关文档。")));
                     emitter.send(SseEmitter.event().data("[DONE]"));
@@ -140,24 +130,19 @@ public class RagService {
                     return;
                 }
 
-                for (int i = 0; i < matches.size(); i++) {
-                    EmbeddingMatch<TextSegment> match = matches.get(i);
-                    TextSegment segment = match.embedded();
-                    context.append(String.format("[%d] %s\n\n", i + 1, segment.text()));
-                    sources.add(Map.of(
-                            "fileName", segment.metadata().getString("file_name") != null ?
-                                    segment.metadata().getString("file_name") : "未知",
-                            "score", Math.round(match.score() * 100) / 100.0
-                    ));
-                }
-
                 // 发送来源信息
                 emitter.send(SseEmitter.event()
                         .name("sources")
-                        .data(sources));
+                        .data(ctx.sources));
 
-                // 2. 流式调用 LLM
-                String systemPrompt = String.format(RAG_SYSTEM_PROMPT, context);
+                // 2. 构建上下文
+                StringBuilder contextStr = new StringBuilder();
+                for (int i = 0; i < ctx.contextTexts.size(); i++) {
+                    contextStr.append(String.format("[%d] %s\n\n", i + 1, ctx.contextTexts.get(i)));
+                }
+
+                // 3. 流式调用 LLM
+                String systemPrompt = String.format(RAG_SYSTEM_PROMPT, contextStr);
                 StreamingChatLanguageModel streamModel = modelFactory.getStreamingModel(finalModelId);
 
                 List<dev.langchain4j.data.message.ChatMessage> messages = List.of(
@@ -200,4 +185,75 @@ public class RagService {
 
         return emitter;
     }
+
+    // ========== 内部检索逻辑 ==========
+
+    /**
+     * 统一检索入口：支持纯向量 / 混合检索 / 混合+Rerank
+     */
+    private RetrievalContext retrieve(String question, Long tenantId) {
+        List<String> contextTexts = new ArrayList<>();
+        List<RagSource> sources = new ArrayList<>();
+
+        if (hybridEnabled) {
+            // 混合检索模式
+            int retrieveCount = rerankEnabled ? maxResults * 4 : maxResults;
+            List<HybridMatch> matches = hybridRetrievalService.hybridSearch(
+                    question, retrieveCount, tenantId);
+
+            if (matches.isEmpty()) return new RetrievalContext(List.of(), List.of());
+
+            if (rerankEnabled) {
+                // Rerank 重排序
+                List<String> candidateTexts = matches.stream()
+                        .map(HybridMatch::getText).toList();
+                List<RerankResult> reranked = rerankService.rerank(
+                        question, candidateTexts, maxResults);
+                for (RerankResult r : reranked) {
+                    contextTexts.add(r.text());
+                    // Rerank 后从原始 matches 中提取 metadata
+                    HybridMatch original = matches.get(r.originalIndex());
+                    sources.add(new RagSource(
+                            original.getMetadata().getString("file_name") != null ?
+                                    original.getMetadata().getString("file_name") : "未知",
+                            r.score(),
+                            r.text().substring(0, Math.min(100, r.text().length())) + "..."
+                    ));
+                }
+            } else {
+                // 仅混合检索，取 Top N
+                for (HybridMatch m : matches.stream().limit(maxResults).toList()) {
+                    contextTexts.add(m.getText());
+                    sources.add(new RagSource(
+                            m.getMetadata().getString("file_name") != null ?
+                                    m.getMetadata().getString("file_name") : "未知",
+                            Math.round(m.totalScore() * 100) / 100.0,
+                            m.getText().substring(0, Math.min(100, m.getText().length())) + "..."
+                    ));
+                }
+            }
+        } else {
+            // 纯向量检索模式（默认）
+            List<EmbeddingMatch<TextSegment>> matches =
+                    vectorStoreService.search(question, maxResults, minScore, tenantId);
+
+            for (EmbeddingMatch<TextSegment> match : matches) {
+                TextSegment segment = match.embedded();
+                contextTexts.add(segment.text());
+                sources.add(new RagSource(
+                        segment.metadata().getString("file_name") != null ?
+                                segment.metadata().getString("file_name") : "未知",
+                        Math.round(match.score() * 100) / 100.0,
+                        segment.text().substring(0, Math.min(100, segment.text().length())) + "..."
+                ));
+            }
+        }
+
+        return new RetrievalContext(contextTexts, sources);
+    }
+
+    /**
+     * 检索结果上下文（内部使用）
+     */
+    private record RetrievalContext(List<String> contextTexts, List<RagSource> sources) {}
 }
