@@ -1,3 +1,23 @@
+-- 租户表
+CREATE TABLE IF NOT EXISTS tenant (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL COMMENT '租户名称',
+    contact_email VARCHAR(200) COMMENT '联系邮箱',
+    status INT DEFAULT 1 COMMENT '1启用 0禁用',
+    monthly_quota BIGINT DEFAULT 1000000 COMMENT '月配额(tokens)',
+    daily_quota BIGINT DEFAULT 100000 COMMENT '日配额(tokens)',
+    monthly_used BIGINT DEFAULT 0 COMMENT '月已用',
+    daily_used BIGINT DEFAULT 0 COMMENT '日已用',
+    quota_reset_day INT DEFAULT 1 COMMENT '月配额重置日',
+    last_daily_reset DATE COMMENT '上次日配额重置时间',
+    last_monthly_reset DATE COMMENT '上次月配额重置时间',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 默认租户
+INSERT IGNORE INTO tenant (id, name, status) VALUES (1, 'Default Tenant', 1);
+
 -- API Key 表
 CREATE TABLE IF NOT EXISTS api_key (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -169,4 +189,43 @@ CREATE TABLE IF NOT EXISTS agent_workflow (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_tenant (tenant_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 提示词模板表
+CREATE TABLE IF NOT EXISTS prompt_template (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id BIGINT NOT NULL COMMENT '所属租户',
+    name VARCHAR(100) NOT NULL COMMENT '模板名称',
+    description VARCHAR(500) COMMENT '描述',
+    category VARCHAR(50) COMMENT '分类',
+    content TEXT NOT NULL COMMENT '模板内容',
+    variables JSON COMMENT '变量定义',
+    version INT DEFAULT 1 COMMENT '当前版本号',
+    is_public TINYINT(1) DEFAULT 0 COMMENT '是否公开',
+    status INT DEFAULT 1 COMMENT '1启用 0禁用',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_tenant (tenant_id),
+    INDEX idx_category (category)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 提示词模板版本表
+CREATE TABLE IF NOT EXISTS prompt_template_version (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    template_id BIGINT NOT NULL COMMENT '所属模板',
+    version INT NOT NULL COMMENT '版本号',
+    content TEXT NOT NULL COMMENT '版本内容',
+    variables JSON COMMENT '变量定义',
+    change_note VARCHAR(500) COMMENT '变更说明',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_template (template_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 模板收藏表
+CREATE TABLE IF NOT EXISTS template_favorite (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id BIGINT NOT NULL COMMENT '租户ID',
+    template_id BIGINT NOT NULL COMMENT '模板ID',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_tenant_template (tenant_id, template_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
