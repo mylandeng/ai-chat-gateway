@@ -13,6 +13,10 @@ const routes = [
   { path: '/knowledge/:id', component: () => import('../views/KnowledgeBaseDetail.vue'), meta: { title: '知识库详情' } },
   { path: '/knowledge/:id/chat', component: () => import('../views/RagChat.vue'), meta: { title: 'RAG 问答' } },
   { path: '/knowledge/:id/debug', component: () => import('../views/RagDebug.vue'), meta: { title: 'RAG Debug' } },
+  // W5 Agent
+  { path: '/agents', component: () => import('../views/AgentList.vue'), meta: { title: 'Agent 管理' } },
+  { path: '/agents/:id/chat', component: () => import('../views/AgentChat.vue'), meta: { title: 'Agent 对话' } },
+  { path: '/workflows', component: () => import('../views/AgentWorkflow.vue'), meta: { title: '工作流' } },
   // W4 分享链接（独立页面，无侧边栏）
   { path: '/share/:token', component: () => import('../views/SharedChat.vue'), meta: { title: '知识库问答', layout: 'blank' } },
 ]

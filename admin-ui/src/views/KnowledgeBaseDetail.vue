@@ -16,15 +16,21 @@
     <el-tabs v-model="activeTab">
       <!-- 文档管理 -->
       <el-tab-pane label="文档管理" name="docs">
-        <div style="margin-bottom: 12px; display: flex; justify-content: flex-end">
+        <div style="margin-bottom: 12px; display: flex; justify-content: flex-end; gap: 8px">
+          <el-button size="small" @click="githubDialogVisible = true">导入 GitHub 仓库</el-button>
           <el-upload :show-file-list="false" :before-upload="handleUpload"
                      accept=".pdf,.docx,.xlsx,.txt,.md,.csv" multiple>
-            <el-button type="primary" size="small" :loading="uploading">上传</el-button>
+            <el-button type="primary" size="small" :loading="uploading">上传文件</el-button>
           </el-upload>
         </div>
 
         <el-table :data="documents" v-loading="loadingDocs" empty-text="暂无文档" size="small">
-          <el-table-column prop="fileName" label="文件名" min-width="200" />
+          <el-table-column prop="fileName" label="文件名" min-width="200">
+            <template #default="{ row }">
+              <span>{{ row.fileName }}</span>
+              <el-tag v-if="row.contentType === 'github-repo'" size="small" type="info" style="margin-left: 6px">GitHub</el-tag>
+            </template>
+          </el-table-column>
           <el-table-column label="大小" width="100">
             <template #default="{ row }"><span class="nx-mono">{{ formatSize(row.fileSize) }}</span></template>
           </el-table-column>
@@ -96,6 +102,23 @@
         </div>
       </el-tab-pane>
     </el-tabs>
+
+    <!-- GitHub 导入对话框 -->
+    <el-dialog v-model="githubDialogVisible" title="导入 GitHub 仓库" width="480px" :close-on-click-modal="false">
+      <el-form @submit.prevent="handleGitHubImport">
+        <el-form-item label="仓库地址">
+          <el-input v-model="githubUrl" placeholder="https://github.com/owner/repo" clearable />
+        </el-form-item>
+        <div style="color: var(--nx-text-muted); font-size: 12px; margin-top: -8px; margin-bottom: 12px">
+          支持格式：https://github.com/owner/repo 或 https://github.com/owner/repo/tree/branch
+        </div>
+      </el-form>
+      <template #footer>
+        <el-button @click="githubDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleGitHubImport" :loading="githubImporting"
+                   :disabled="!githubUrl.trim()">开始导入</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -103,7 +126,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { getKb, updateKb, listKbDocuments, uploadKbDocument, deleteKbDocument, toggleShare } from '@/api/rag'
+import { getKb, updateKb, listKbDocuments, uploadKbDocument, deleteKbDocument, toggleShare, importGitHubRepo } from '@/api/rag'
 
 const route = useRoute()
 const router = useRouter()
@@ -120,6 +143,9 @@ const shareEnabled = ref(false)
 const shareUrl = ref('')
 const editForm = ref({ name: '', description: '' })
 const saving = ref(false)
+const githubDialogVisible = ref(false)
+const githubUrl = ref('')
+const githubImporting = ref(false)
 
 async function loadKb() {
   loading.value = true
@@ -160,6 +186,25 @@ function pollDocuments() {
 
 async function handleDeleteDoc(docId) {
   try { await deleteKbDocument(kbId.value, docId); ElMessage.success('已删除'); loadDocs() } catch (e) {}
+}
+
+async function handleGitHubImport() {
+  const url = githubUrl.value.trim()
+  if (!url) return
+  if (!/^https?:\/\/github\.com\/[\w.-]+\/[\w.-]+(\/.*)?$/.test(url)) {
+    return ElMessage.warning('请输入有效的 GitHub 仓库地址')
+  }
+  githubImporting.value = true
+  try {
+    await importGitHubRepo(kbId.value, url)
+    ElMessage.success('导入已开始，正在后台处理...')
+    githubDialogVisible.value = false
+    githubUrl.value = ''
+    pollDocuments()
+  } catch (e) {
+    ElMessage.error(e?.response?.data?.message || '导入失败')
+  }
+  githubImporting.value = false
 }
 
 async function handleToggleShare(val) {

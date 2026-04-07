@@ -109,6 +109,13 @@
             <version>8.7.0</version>
         </dependency>
 
+        <!-- W5: URL Reader (Jsoup) -->
+        <dependency>
+            <groupId>org.jsoup</groupId>
+            <artifactId>jsoup</artifactId>
+            <version>1.17.2</version>
+        </dependency>
+
         <!-- Utilities -->
         <dependency>
             <groupId>org.projectlombok</groupId>

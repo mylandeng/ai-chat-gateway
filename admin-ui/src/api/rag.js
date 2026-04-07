@@ -49,6 +49,9 @@ export const listKbDocuments = (kbId) => api.get(`/rag/kb/${kbId}/documents`)
 export const deleteKbDocument = (kbId, docId) =>
   api.delete(`/rag/kb/${kbId}/documents/${docId}`)
 
+export const importGitHubRepo = (kbId, url) =>
+  api.post(`/rag/kb/${kbId}/documents/import-github`, { url })
+
 // ========== W4 多轮对话 ==========
 
 export const ragKbChat = (kbId, question, sessionId, model) =>

@@ -38,6 +38,14 @@
           <span class="nx-nav-prefix">[RAG]</span>
           <span>RAG 测试</span>
         </el-menu-item>
+        <el-menu-item index="/agents">
+          <span class="nx-nav-prefix">[AGT]</span>
+          <span>Agent 管理</span>
+        </el-menu-item>
+        <el-menu-item index="/workflows">
+          <span class="nx-nav-prefix">[WKF]</span>
+          <span>工作流</span>
+        </el-menu-item>
       </el-menu>
 
       <div class="nx-sidebar-footer">
@@ -85,10 +93,11 @@ function toggleTheme() {
   window.dispatchEvent(new CustomEvent('nx-theme-change', { detail: theme }))
 }
 
-// 处理子路由激活态：/knowledge/1 应高亮 /knowledge-list
+// 处理子路由激活态
 const activeRoute = computed(() => {
   const p = route.path
   if (p.startsWith('/knowledge/') || p === '/knowledge-list') return '/knowledge-list'
+  if (p.startsWith('/agents/') || p === '/agents') return '/agents'
   return p
 })
 
