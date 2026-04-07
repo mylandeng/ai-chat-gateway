@@ -65,7 +65,7 @@ ai:
         provider: CLAUDE
         base-url: ${ANTHROPIC_BASE_URL:https://api.anthropic.com}
         api-key: ${ANTHROPIC_API_KEY:}
-        model-name: claude-sonnet-4-6
+        model-name: ${ANTHROPIC_MODEL_NAME:claude-sonnet-4-6}
         temperature: 0.7
         max-tokens: 4096
 
@@ -75,7 +75,7 @@ rag:
     host: ${PGVECTOR_HOST:localhost}
     port: ${PGVECTOR_PORT:5433}
     database: rag_db
-    user: postgres
+    user:  ${PGVECTOR_USERNAME:postgres}
     password: ${PGVECTOR_PASSWORD:postgres}
   embedding:
     api-key: ${DASHSCOPE_API_KEY:}
