@@ -63,8 +63,8 @@ ai:
       # === Claude ===
       claude-sonnet:
         provider: CLAUDE
-        base-url: https://149f8030-8d34-4d3b-b455-5091520e35e8-00-316yxidjdk4ed.riker.replit.dev
-        api-key: ${ANTHROPIC_API_KEY:heposay1995}
+        base-url: ${ANTHROPIC_BASE_URL:https://api.anthropic.com}
+        api-key: ${ANTHROPIC_API_KEY:}
         model-name: claude-sonnet-4-6
         temperature: 0.7
         max-tokens: 4096
@@ -94,8 +94,8 @@ rag:
     enabled: true            # 是否启用 Rerank 重排序
     provider: cohere         # cohere | local（模力方舟兼容 cohere 格式）
     api-key: ${RERANK_API_KEY:}
-    base-url: https://ai.gitee.com     # 代码拼接 /v1/rerank
-    model: Qwen3-Reranker-4B
+    base-url: ${RERANK_BASE_URL:https://api.cohere.ai}
+    model: ${RERANK_MODEL:rerank-english-v2.0}
   chat:
     history-rounds: 5          # 多轮对话历史保留轮数
     rewrite-enabled: true      # 是否启用 query 改写
