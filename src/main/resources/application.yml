@@ -119,3 +119,7 @@ agent:
     web-search:
       api-key: ${SERPER_API_KEY:}
       base-url: https://google.serper.dev/search
+    llm-summarize:
+      model-id: ${LLM_SUMMARIZE_MODEL:deepseek-chat}
+    file-writer:
+      output-dir: ${FILE_WRITER_OUTPUT_DIR:./workflow-output}

@@ -25,20 +25,33 @@ public class WebSearchTool {
 
     private final RestTemplate restTemplate = new RestTemplate();
 
-    @Tool("搜索互联网获取最新信息。输入搜索关键词，返回相关网页标题和摘要。")
+    @Tool("搜索互联网获取最新信息。输入搜索关键词，返回相关网页标题和摘要。默认搜索最近一天的内容。")
     @SuppressWarnings("unchecked")
     public String webSearch(@P("搜索关键词") String query) {
+        return webSearch(query, "qdr:d");
+    }
+
+    /**
+     * 带时间范围的搜索
+     * @param query 搜索关键词
+     * @param tbs 时间范围: qdr:h(1小时), qdr:d(1天), qdr:w(1周), qdr:m(1月), qdr:y(1年), 空字符串(不限)
+     */
+    @SuppressWarnings("unchecked")
+    public String webSearch(String query, String tbs) {
         if (apiKey == null || apiKey.isBlank()) {
             return "[搜索不可用] 未配置搜索API密钥";
         }
 
-        log.info("[WebSearch] query={}", query);
+        log.info("[WebSearch] query={}, tbs={}", query, tbs);
         try {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
             headers.set("X-API-KEY", apiKey);
 
-            Map<String, Object> body = Map.of("q", query, "num", 5, "hl", "zh-cn");
+            Map<String, Object> body = new java.util.HashMap<>(Map.of("q", query, "num", 5, "hl", "zh-cn"));
+            if (tbs != null && !tbs.isBlank()) {
+                body.put("tbs", tbs);
+            }
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
 
             ResponseEntity<Map> response = restTemplate.postForEntity(baseUrl, entity, Map.class);

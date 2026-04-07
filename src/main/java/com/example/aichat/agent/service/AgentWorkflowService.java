@@ -28,6 +28,9 @@ public class AgentWorkflowService {
     private final UrlReaderTool urlReaderTool;
     private final CurrentTimeTool currentTimeTool;
     private final CodeInterpreterTool codeInterpreterTool;
+    private final LlmSummarizeTool llmSummarizeTool;
+    private final FileWriterTool fileWriterTool;
+    private final KbWriterTool kbWriterTool;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
@@ -36,13 +39,19 @@ public class AgentWorkflowService {
                                  KnowledgeBaseTool kbTool,
                                  UrlReaderTool urlReaderTool,
                                  CurrentTimeTool currentTimeTool,
-                                 CodeInterpreterTool codeInterpreterTool) {
+                                 CodeInterpreterTool codeInterpreterTool,
+                                 LlmSummarizeTool llmSummarizeTool,
+                                 FileWriterTool fileWriterTool,
+                                 KbWriterTool kbWriterTool) {
         this.workflowRepo = workflowRepo;
         this.webSearchTool = webSearchTool;
         this.kbTool = kbTool;
         this.urlReaderTool = urlReaderTool;
         this.currentTimeTool = currentTimeTool;
         this.codeInterpreterTool = codeInterpreterTool;
+        this.llmSummarizeTool = llmSummarizeTool;
+        this.fileWriterTool = fileWriterTool;
+        this.kbWriterTool = kbWriterTool;
     }
 
     public List<AgentWorkflow> listByTenant(Long tenantId) {
@@ -164,6 +173,38 @@ public class AgentWorkflowService {
                     }
                 } else {
                     yield kbTool.queryKnowledgeBase(input, 1L);
+                }
+            }
+            case "llm_summarize" -> llmSummarizeTool.summarize(input);
+            case "kb_writer" -> {
+                // 输入格式: "kbId:docName\n内容" 或 "kbId\n内容"
+                int nl = input.indexOf('\n');
+                if (nl > 0) {
+                    String header = input.substring(0, nl).trim();
+                    String content = input.substring(nl + 1);
+                    String[] parts = header.split(":", 2);
+                    try {
+                        Long kbId = Long.parseLong(parts[0].trim());
+                        String docName = parts.length > 1 ? parts[1].trim() : "workflow-doc";
+                        yield kbWriterTool.writeToKb(kbId, docName, content);
+                    } catch (NumberFormatException e) {
+                        yield "[知识库写入失败] 第一行格式应为 kbId:文档名，如 3:AI新闻汇总";
+                    }
+                } else {
+                    yield "[知识库写入失败] 输入格式: 第一行 kbId:文档名，换行后为内容";
+                }
+            }
+            case "file_writer" -> {
+                // 输入格式: 第一行为文件名，其余为内容
+                int newline = input.indexOf('\n');
+                if (newline > 0) {
+                    String fileName = input.substring(0, newline).trim();
+                    String content = input.substring(newline + 1);
+                    yield fileWriterTool.writeFile(fileName, content);
+                } else {
+                    // 没有换行时，用时间戳作文件名，整段作为内容
+                    String fileName = "output-" + System.currentTimeMillis() + ".md";
+                    yield fileWriterTool.writeFile(fileName, input);
                 }
             }
             default -> "[未知工具] " + toolName;

@@ -23,17 +23,23 @@ public class ToolRegistry {
                         KnowledgeBaseTool kbTool,
                         UrlReaderTool urlReader,
                         CurrentTimeTool currentTime,
-                        CodeInterpreterTool codeInterpreter) {
-        register("web_search", webSearch, "联网搜索", "搜索互联网获取最新信息");
-        register("knowledge_base", kbTool, "知识库查询", "查询企业知识库文档");
-        register("url_reader", urlReader, "网页读取", "读取指定URL网页内容");
-        register("current_time", currentTime, "当前时间", "获取当前日期和时间");
-        register("code_interpreter", codeInterpreter, "代码执行", "执行简单数学表达式或JS代码");
+                        CodeInterpreterTool codeInterpreter,
+                        LlmSummarizeTool llmSummarize,
+                        FileWriterTool fileWriter,
+                        KbWriterTool kbWriter) {
+        register("web_search", webSearch, "联网搜索", "搜索互联网获取最新信息",  "🔍");
+        register("knowledge_base", kbTool, "知识库查询", "查询企业知识库文档", "🌐");
+        register("url_reader", urlReader, "网页读取", "读取指定URL网页内容", "📚");
+        register("current_time", currentTime, "当前时间", "获取当前日期和时间", "🕐");
+        register("code_interpreter", codeInterpreter, "代码执行", "执行简单数学表达式或JS代码", "🔢");
+        register("llm_summarize", llmSummarize, "AI总结", "使用AI对内容进行总结分析改写", "🤖");
+        register("file_writer", fileWriter, "文件写入", "将内容保存为本地文件", "💾");
+        register("kb_writer", kbWriter, "知识库写入", "将内容写入指定知识库", "📥");
     }
 
-    private void register(String name, Object instance, String label, String description) {
+    private void register(String name, Object instance, String label, String description, String icon) {
         toolInstances.put(name, instance);
-        toolMeta.put(name, Map.of("name", name, "label", label, "description", description));
+        toolMeta.put(name, Map.of("name", name, "label", label, "description", description, "icon", icon));
     }
 
     /**
