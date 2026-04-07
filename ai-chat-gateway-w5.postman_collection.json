@@ -1,0 +1,192 @@
+{
+  "info": {
+    "name": "AI Chat Gateway - W5 Agent 工作流",
+    "description": "W5: 智能体 Agent 系统 + 工具调用 + 工作流编排",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{apiKey}}", "type": "string" }]
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "apiKey", "value": "sk-test-key" },
+    { "key": "agentId", "value": "1" },
+    { "key": "sessionId", "value": "1" },
+    { "key": "workflowId", "value": "1" }
+  ],
+  "item": [
+    {
+      "name": "Agent 管理",
+      "item": [
+        {
+          "name": "列出 Agent",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/agents"
+          }
+        },
+        {
+          "name": "获取 Agent 详情",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/agents/{{agentId}}"
+          }
+        },
+        {
+          "name": "创建 Agent",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/agents",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"测试助手\",\n  \"avatar\": \"🧪\",\n  \"description\": \"测试用 Agent\",\n  \"modelId\": \"deepseek-chat\",\n  \"systemPrompt\": \"你是一个智能助手，请根据用户的问题给出有帮助的回答。\",\n  \"toolsConfig\": \"[\\\"web_search\\\",\\\"current_time\\\"]\"\n}"
+            }
+          }
+        },
+        {
+          "name": "更新 Agent",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/agents/{{agentId}}",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"更新后的助手\",\n  \"avatar\": \"🔧\",\n  \"description\": \"更新描述\",\n  \"modelId\": \"deepseek-chat\",\n  \"systemPrompt\": \"你是一个智能助手。\",\n  \"toolsConfig\": \"[\\\"web_search\\\",\\\"current_time\\\",\\\"url_reader\\\"]\"\n}"
+            }
+          }
+        },
+        {
+          "name": "删除 Agent",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/agents/{{agentId}}"
+          }
+        },
+        {
+          "name": "预设模板列表",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/agents/templates"
+          }
+        },
+        {
+          "name": "复制模板",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/agents/{{agentId}}/clone"
+          }
+        },
+        {
+          "name": "可用工具列表",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/agents/tools"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Agent 对话",
+      "item": [
+        {
+          "name": "流式对话 (SSE)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/agents/{{agentId}}/chat/stream?q=你好，请帮我搜索今天的新闻&model=deepseek-chat",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "agents", "{{agentId}}", "chat", "stream"],
+              "query": [
+                { "key": "q", "value": "你好，请帮我搜索今天的新闻" },
+                { "key": "model", "value": "deepseek-chat" },
+                { "key": "sessionId", "value": "", "disabled": true }
+              ]
+            },
+            "description": "SSE 流式对话。事件类型:\n- event: session → {sessionId}\n- event: tool_call → {toolName, toolArgs, result}\n- data: {type:\"token\", content:\"...\"}\n- data: {type:\"done\"}\n- data: {type:\"error\", message:\"...\"}"
+          }
+        },
+        {
+          "name": "会话列表",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/agents/{{agentId}}/sessions"
+          }
+        },
+        {
+          "name": "会话消息历史",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/agents/{{agentId}}/sessions/{{sessionId}}/messages"
+          }
+        },
+        {
+          "name": "删除会话",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/agents/{{agentId}}/sessions/{{sessionId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "工作流",
+      "item": [
+        {
+          "name": "列出工作流",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/workflows"
+          }
+        },
+        {
+          "name": "创建工作流",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/workflows",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"搜索并总结\",\n  \"description\": \"先搜索再用 URL 读取详情\",\n  \"steps\": \"[{\\\"stepNo\\\":1,\\\"toolName\\\":\\\"web_search\\\",\\\"inputTemplate\\\":\\\"{{userInput}}\\\",\\\"description\\\":\\\"搜索相关内容\\\"},{\\\"stepNo\\\":2,\\\"toolName\\\":\\\"url_reader\\\",\\\"inputTemplate\\\":\\\"{{step1_output}}\\\",\\\"description\\\":\\\"读取第一条结果\\\"}]\"\n}"
+            }
+          }
+        },
+        {
+          "name": "更新工作流",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/workflows/{{workflowId}}",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"更新后的工作流\",\n  \"description\": \"更新描述\",\n  \"steps\": \"[{\\\"stepNo\\\":1,\\\"toolName\\\":\\\"current_time\\\",\\\"inputTemplate\\\":\\\"\\\",\\\"description\\\":\\\"获取当前时间\\\"}]\"\n}"
+            }
+          }
+        },
+        {
+          "name": "删除工作流",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/workflows/{{workflowId}}"
+          }
+        },
+        {
+          "name": "执行工作流 (SSE)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/workflows/{{workflowId}}/run?input=最新AI新闻",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "workflows", "{{workflowId}}", "run"],
+              "query": [
+                { "key": "input", "value": "最新AI新闻" }
+              ]
+            },
+            "description": "SSE 流式执行。事件类型:\n- event: step_start → {stepNo, toolName, description}\n- event: step_end → {stepNo, output, durationMs}\n- data: {type:\"done\"}\n- data: {type:\"error\", message:\"...\"}"
+          }
+        }
+      ]
+    }
+  ]
+}

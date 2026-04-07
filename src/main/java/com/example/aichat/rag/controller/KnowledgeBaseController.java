@@ -5,6 +5,7 @@ import com.example.aichat.rag.model.KnowledgeBase;
 import com.example.aichat.rag.model.KnowledgeDocument;
 import com.example.aichat.rag.model.RagDebugResponse;
 import com.example.aichat.rag.repository.KnowledgeDocumentRepository;
+import com.example.aichat.rag.service.GitHubImportService;
 import com.example.aichat.rag.service.IndexingPipeline;
 import com.example.aichat.rag.service.KnowledgeBaseService;
 import com.example.aichat.rag.service.RagChatService;
@@ -28,15 +29,18 @@ public class KnowledgeBaseController {
     private final KnowledgeDocumentRepository docRepo;
     private final IndexingPipeline indexingPipeline;
     private final RagChatService ragChatService;
+    private final GitHubImportService gitHubImportService;
 
     public KnowledgeBaseController(KnowledgeBaseService kbService,
                                     KnowledgeDocumentRepository docRepo,
                                     IndexingPipeline indexingPipeline,
-                                    RagChatService ragChatService) {
+                                    RagChatService ragChatService,
+                                    GitHubImportService gitHubImportService) {
         this.kbService = kbService;
         this.docRepo = docRepo;
         this.indexingPipeline = indexingPipeline;
         this.ragChatService = ragChatService;
+        this.gitHubImportService = gitHubImportService;
     }
 
     // ========== 知识库 CRUD ==========
@@ -82,6 +86,22 @@ public class KnowledgeBaseController {
 
         KnowledgeDocument doc = indexingPipeline.saveFile(file, tenantId, kbId);
         indexingPipeline.processAsync(doc.getId(), doc.getFilePath());
+        kbService.refreshDocCount(kbId);
+        return doc;
+    }
+
+    @PostMapping("/{kbId}/documents/import-github")
+    public KnowledgeDocument importGitHub(@PathVariable Long kbId,
+                                           @RequestBody Map<String, String> body) {
+        Long tenantId = RequestContext.get("tenantId");
+        kbService.getByIdAndTenant(kbId, tenantId);
+
+        String githubUrl = body.get("url");
+        if (githubUrl == null || githubUrl.isBlank()) {
+            throw new IllegalArgumentException("缺少参数: url");
+        }
+
+        KnowledgeDocument doc = gitHubImportService.startImport(githubUrl, tenantId, kbId);
         kbService.refreshDocCount(kbId);
         return doc;
     }

@@ -20,6 +20,8 @@ public class WebConfig implements WebMvcConfigurer {
             .addPathPatterns("/api/usage/**")
             .addPathPatterns("/api/templates/**")
             .addPathPatterns("/api/rag/**")
+            .addPathPatterns("/api/agents/**")
+            .addPathPatterns("/api/workflows/**")
             .excludePathPatterns("/api/models")
             .excludePathPatterns("/api/keys/**")
             .excludePathPatterns("/api/tenants/**")

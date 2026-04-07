@@ -114,3 +114,59 @@ CREATE TABLE IF NOT EXISTS rag_chat_message (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_session (session_id, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- W5: Agent 定义表
+CREATE TABLE IF NOT EXISTS agent (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id BIGINT NOT NULL COMMENT '所属租户',
+    name VARCHAR(100) NOT NULL COMMENT 'Agent名称',
+    description VARCHAR(500) COMMENT '描述',
+    avatar VARCHAR(50) COMMENT '图标(emoji)',
+    system_prompt TEXT NOT NULL COMMENT '系统提示词',
+    model_id VARCHAR(50) NOT NULL DEFAULT 'deepseek-chat' COMMENT '使用的模型ID',
+    tools_config JSON COMMENT '启用的工具列表 ["web_search","knowledge_base:3"]',
+    is_template TINYINT DEFAULT 0 COMMENT '1=预设模板 0=用户自建',
+    status TINYINT DEFAULT 1 COMMENT '1启用 0禁用',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_tenant (tenant_id),
+    INDEX idx_template (is_template)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- W5: Agent 对话会话表
+CREATE TABLE IF NOT EXISTS agent_chat_session (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    agent_id BIGINT NOT NULL COMMENT '所属Agent',
+    tenant_id BIGINT NOT NULL COMMENT '所属租户',
+    title VARCHAR(200) COMMENT '会话标题',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_agent_tenant (agent_id, tenant_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- W5: Agent 对话消息表（含工具调用记录）
+CREATE TABLE IF NOT EXISTS agent_chat_message (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    session_id BIGINT NOT NULL COMMENT '所属会话',
+    role VARCHAR(20) NOT NULL COMMENT 'user/assistant/tool',
+    content TEXT COMMENT '消息内容',
+    tool_calls JSON COMMENT 'assistant消息中的工具调用请求',
+    tool_name VARCHAR(50) COMMENT 'tool消息: 工具名称',
+    tool_input TEXT COMMENT 'tool消息: 工具输入参数',
+    tool_output TEXT COMMENT 'tool消息: 工具返回结果',
+    tool_duration_ms INT COMMENT 'tool消息: 执行耗时',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_session (session_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- W5: 工作流定义表
+CREATE TABLE IF NOT EXISTS agent_workflow (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id BIGINT NOT NULL COMMENT '所属租户',
+    name VARCHAR(100) NOT NULL COMMENT '工作流名称',
+    description VARCHAR(500) COMMENT '描述',
+    steps JSON NOT NULL COMMENT '步骤定义 [{stepNo,toolName,inputTemplate,description}]',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_tenant (tenant_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

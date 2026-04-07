@@ -63,8 +63,9 @@ ai:
       # === Claude ===
       claude-sonnet:
         provider: CLAUDE
-        api-key: ${ANTHROPIC_API_KEY:}
-        model-name: claude-haiku-4-5-20251001
+        base-url: https://149f8030-8d34-4d3b-b455-5091520e35e8-00-316yxidjdk4ed.riker.replit.dev
+        api-key: ${ANTHROPIC_API_KEY:heposay1995}
+        model-name: claude-sonnet-4-6
         temperature: 0.7
         max-tokens: 4096
 
@@ -112,4 +113,9 @@ rag:
       - text/csv
       - text/markdown
 
-
+# Agent 工具配置 (W5)
+agent:
+  tools:
+    web-search:
+      api-key: ${SERPER_API_KEY:}
+      base-url: https://google.serper.dev/search
