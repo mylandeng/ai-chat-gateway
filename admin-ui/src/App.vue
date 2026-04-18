@@ -128,6 +128,7 @@ const activeRoute = computed(() => {
   const p = route.path
   if (p.startsWith('/knowledge/') || p === '/knowledge-list') return '/knowledge-list'
   if (p.startsWith('/agents/') || p === '/agents') return '/agents'
+  if (p.startsWith('/workflows')) return '/workflows'
   if (p.startsWith('/proxy/')) return p
   return p
 })
