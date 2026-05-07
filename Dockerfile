@@ -12,6 +12,8 @@ RUN --mount=type=cache,target=/root/.m2 mvn clean package -DskipTests -B
 # 第二阶段：运行
 FROM eclipse-temurin:17-jre-alpine
 
+# 运行阶段
+FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
 COPY --from=builder /build/target/ai-chat-gateway-1.0.0.jar app.jar
 
