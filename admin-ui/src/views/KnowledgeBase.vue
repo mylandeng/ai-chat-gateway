@@ -60,7 +60,7 @@
         </div>
       </template>
 
-      <div class="nx-log-area" ref="messagesRef" style="height: 320px; margin-bottom: 12px">
+      <div class="nx-log-area nx-rag-legacy-log" ref="messagesRef">
         <div v-if="messages.length === 0" class="nx-empty" style="height: 100%">
           <div class="nx-empty-icon" style="font-size: 24px">_</div>
           <div style="font-size: 11px">上传文档 // 开始提问</div>
@@ -74,8 +74,11 @@
             <span class="nx-log-rule"></span>
           </div>
           <div class="nx-log-body" :class="{ 'user-text': msg.role === 'user' }">
-            {{ msg.content }}
-            <span v-if="msg.role === 'assistant' && i === messages.length - 1 && isStreaming" class="nx-log-cursor"></span>
+            <template v-if="msg.role === 'user'">{{ msg.content }}</template>
+            <template v-else>
+              <div class="nx-markdown" v-html="renderMd(msg.content)"></div>
+              <span v-if="i === messages.length - 1 && isStreaming" class="nx-log-cursor"></span>
+            </template>
           </div>
           <div v-if="msg.sources && msg.sources.length" class="nx-sources-box">
             <div class="nx-sources-title">引用来源</div>
@@ -89,8 +92,9 @@
 
       <div class="nx-input-bar">
         <span class="nx-input-prompt">></span>
-        <el-input v-model="inputMsg" placeholder="输入问题..."
-          @keyup.enter="send" :disabled="isStreaming" />
+        <el-input v-model="inputMsg" type="textarea" placeholder="输入问题..."
+          :autosize="{ minRows: 2, maxRows: 6 }"
+          @keydown.enter.exact.prevent="send" :disabled="isStreaming" />
         <el-button type="primary" @click="send" :loading="isStreaming">发送</el-button>
       </div>
     </el-card>
@@ -101,6 +105,7 @@
 import { ref, onMounted, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getDocuments, uploadDocument, deleteDocument } from '@/api/rag'
+import { renderMarkdown } from '@/utils/markdown'
 
 const documents = ref([])
 const loadingDocs = ref(false)
@@ -163,6 +168,15 @@ const messagesRef = ref(null)
 
 function now() { return new Date().toLocaleTimeString('en-GB', { hour12: false }) }
 
+function normalizeMarkdown(text) {
+  if (!text) return ''
+  return text
+    .replace(/```([A-Za-z0-9_-]+)[ \t]+/g, '```$1\n')
+    .replace(/[ \t]+```/g, '\n```')
+}
+
+function renderMd(text) { return renderMarkdown(normalizeMarkdown(text)) }
+
 function scrollToBottom() {
   nextTick(() => {
     if (messagesRef.value) messagesRef.value.scrollTop = messagesRef.value.scrollHeight
@@ -193,6 +207,7 @@ async function send() {
     const reader = resp.body.getReader()
     const decoder = new TextDecoder()
     let buffer = ''
+    let nextIsSources = false
 
     while (true) {
       const { done, value } = await reader.read()
@@ -201,7 +216,6 @@ async function send() {
       const lines = buffer.split('\n')
       buffer = lines.pop()
 
-      let nextIsSources = false
       for (const line of lines) {
         const trimmed = line.trim()
         if (trimmed.startsWith('event:')) {
@@ -234,10 +248,57 @@ onMounted(() => { loadDocuments() })
 
 <style scoped>
 .nx-kb-legacy { display: flex; flex-direction: column; }
+.nx-rag-legacy-log {
+  height: calc(100vh - 360px);
+  min-height: 620px;
+  margin-bottom: 14px;
+  padding: 22px 28px;
+  scroll-behavior: smooth;
+}
 .nx-empty { display: flex; flex-direction: column; align-items: center; justify-content: center;
   color: var(--nx-text-muted); font-family: var(--nx-font-mono); font-size: 12px;
   text-transform: uppercase; letter-spacing: 2px; gap: 8px; }
 .nx-empty-icon { color: var(--nx-accent-amber); animation: nx-pulse 2s infinite; }
-.nx-input-bar { display: flex; align-items: center; gap: 10px; }
+.nx-kb-legacy :deep(.nx-log-entry) { max-width: 1120px; margin: 0 auto 24px; }
+.nx-kb-legacy :deep(.nx-log-body) { padding-left: 0; font-size: 15px; line-height: 1.85; }
+.nx-kb-legacy :deep(.nx-log-body:not(.user-text)) {
+  background: rgba(18, 24, 38, 0.72);
+  border: 1px solid var(--nx-border);
+  border-left: 3px solid var(--nx-accent-teal);
+  border-radius: 8px;
+  padding: 18px 22px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.16);
+}
+.nx-kb-legacy :deep(.nx-log-body.user-text) {
+  max-width: 880px;
+  margin-left: auto;
+  background: var(--nx-accent-amber-dim);
+  border: 1px solid rgba(245, 158, 11, 0.28);
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+.nx-kb-legacy :deep(.nx-markdown strong) { color: var(--nx-accent-amber); font-weight: 700; }
+.nx-kb-legacy :deep(.nx-markdown blockquote) {
+  background: rgba(245, 158, 11, 0.08);
+  border-left-color: var(--nx-accent-amber);
+  border-radius: 0 6px 6px 0;
+  padding: 10px 14px;
+  font-style: normal;
+}
+.nx-kb-legacy :deep(.nx-sources-box) { max-width: 1120px; margin: 12px auto 0; border-radius: 8px; }
+.nx-input-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--nx-bg-surface);
+  border: 1px solid var(--nx-border);
+  border-radius: 8px;
+}
 .nx-input-prompt { font-family: var(--nx-font-mono); font-size: 16px; color: var(--nx-accent-amber); font-weight: 600; }
+
+@media (max-width: 900px) {
+  .nx-rag-legacy-log { height: 70vh; min-height: 520px; padding: 16px; }
+  .nx-kb-legacy :deep(.nx-log-body:not(.user-text)) { padding: 14px 16px; }
+}
 </style>
