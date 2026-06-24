@@ -61,7 +61,7 @@
           <div v-if="msg.sources && msg.sources.length" class="nx-sources-box">
             <div class="nx-sources-title">引用来源</div>
             <div v-for="(s, si) in msg.sources" :key="si" class="nx-source-item">
-              <span>{{ s.fileName }}</span>
+              <span>{{ s.fileName }}<span v-if="s.page"> · 第 {{ s.page }} 页</span></span>
               <span class="nx-source-score">{{ (s.score * 100).toFixed(0) }}%</span>
             </div>
           </div>
@@ -298,12 +298,13 @@ onMounted(() => { loadKbInfo(); loadSessions() })
 }
 
 .nx-rag-chat :deep(.nx-log-body:not(.user-text)) {
-  background: rgba(18, 24, 38, 0.72);
-  border: 1px solid var(--nx-border);
+  background: linear-gradient(180deg, #ecfeff 0%, #f0fdfa 100%);
+  border: 1px solid rgba(13, 148, 136, 0.22);
   border-left: 3px solid var(--nx-accent-teal);
+  color: #164e63;
   border-radius: 8px;
   padding: 18px 22px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.16);
+  box-shadow: 0 10px 28px rgba(13, 148, 136, 0.08);
 }
 
 .nx-rag-chat :deep(.nx-log-body.user-text) {
@@ -317,16 +318,22 @@ onMounted(() => { loadKbInfo(); loadSessions() })
 
 .nx-rag-chat :deep(.nx-markdown) {
   max-width: none;
+  color: #164e63;
   word-break: break-word;
 }
 
 .nx-rag-chat :deep(.nx-markdown p) {
+  color: #164e63;
   margin-bottom: 12px;
 }
 
 .nx-rag-chat :deep(.nx-markdown strong) {
-  color: var(--nx-accent-amber);
+  color: #0f766e;
   font-weight: 700;
+}
+
+.nx-rag-chat :deep(.nx-markdown li) {
+  color: #164e63;
 }
 
 .nx-rag-chat :deep(.nx-markdown blockquote) {

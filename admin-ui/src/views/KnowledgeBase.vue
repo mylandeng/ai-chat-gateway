@@ -47,7 +47,7 @@
     </el-card>
 
     <!-- RAG 对话区 -->
-    <el-card>
+    <el-card class="nx-rag-card">
       <template #header>
         <div style="display: flex; justify-content: space-between; align-items: center">
           <span>RAG 问答</span>
@@ -83,7 +83,7 @@
           <div v-if="msg.sources && msg.sources.length" class="nx-sources-box">
             <div class="nx-sources-title">引用来源</div>
             <div v-for="(s, si) in msg.sources" :key="si" class="nx-source-item">
-              <span>{{ s.fileName }}</span>
+              <span>{{ s.fileName }}<span v-if="s.page"> · 第 {{ s.page }} 页</span></span>
               <span class="nx-source-score">{{ (s.score * 100).toFixed(0) }}%</span>
             </div>
           </div>
@@ -247,10 +247,25 @@ onMounted(() => { loadDocuments() })
 </script>
 
 <style scoped>
-.nx-kb-legacy { display: flex; flex-direction: column; }
+.nx-kb-legacy {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 24px);
+  min-height: 0;
+}
+.nx-rag-card {
+  flex: 1;
+  min-height: 0;
+}
+.nx-rag-card :deep(.el-card__body) {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: calc(100% - 49px);
+}
 .nx-rag-legacy-log {
-  height: calc(100vh - 360px);
-  min-height: 620px;
+  flex: 1;
+  min-height: 340px;
   margin-bottom: 14px;
   padding: 22px 28px;
   scroll-behavior: smooth;
@@ -262,12 +277,13 @@ onMounted(() => { loadDocuments() })
 .nx-kb-legacy :deep(.nx-log-entry) { max-width: 1120px; margin: 0 auto 24px; }
 .nx-kb-legacy :deep(.nx-log-body) { padding-left: 0; font-size: 15px; line-height: 1.85; }
 .nx-kb-legacy :deep(.nx-log-body:not(.user-text)) {
-  background: rgba(18, 24, 38, 0.72);
-  border: 1px solid var(--nx-border);
+  background: linear-gradient(180deg, #ecfeff 0%, #f0fdfa 100%);
+  border: 1px solid rgba(13, 148, 136, 0.22);
   border-left: 3px solid var(--nx-accent-teal);
+  color: #164e63;
   border-radius: 8px;
   padding: 18px 22px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.16);
+  box-shadow: 0 10px 28px rgba(13, 148, 136, 0.08);
 }
 .nx-kb-legacy :deep(.nx-log-body.user-text) {
   max-width: 880px;
@@ -277,7 +293,12 @@ onMounted(() => { loadDocuments() })
   border-radius: 8px;
   padding: 12px 16px;
 }
-.nx-kb-legacy :deep(.nx-markdown strong) { color: var(--nx-accent-amber); font-weight: 700; }
+.nx-kb-legacy :deep(.nx-log-body:not(.user-text) .nx-markdown),
+.nx-kb-legacy :deep(.nx-log-body:not(.user-text) .nx-markdown p),
+.nx-kb-legacy :deep(.nx-log-body:not(.user-text) .nx-markdown li) {
+  color: #164e63;
+}
+.nx-kb-legacy :deep(.nx-markdown strong) { color: #0f766e; font-weight: 700; }
 .nx-kb-legacy :deep(.nx-markdown blockquote) {
   background: rgba(245, 158, 11, 0.08);
   border-left-color: var(--nx-accent-amber);
@@ -298,7 +319,9 @@ onMounted(() => { loadDocuments() })
 .nx-input-prompt { font-family: var(--nx-font-mono); font-size: 16px; color: var(--nx-accent-amber); font-weight: 600; }
 
 @media (max-width: 900px) {
-  .nx-rag-legacy-log { height: 70vh; min-height: 520px; padding: 16px; }
+  .nx-kb-legacy { height: auto; }
+  .nx-rag-card :deep(.el-card__body) { height: auto; }
+  .nx-rag-legacy-log { height: 56vh; min-height: 340px; padding: 16px; }
   .nx-kb-legacy :deep(.nx-log-body:not(.user-text)) { padding: 14px 16px; }
 }
 </style>

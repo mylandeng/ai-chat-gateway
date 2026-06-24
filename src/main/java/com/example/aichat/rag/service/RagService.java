@@ -235,6 +235,7 @@ public class RagService {
                     sources.add(new RagSource(
                             original.getMetadata().getString("file_name") != null ?
                                     original.getMetadata().getString("file_name") : "未知",
+                            getPage(original.getMetadata()),
                             r.score(),
                             r.text().substring(0, Math.min(100, r.text().length())) + "..."
                     ));
@@ -246,6 +247,7 @@ public class RagService {
                     sources.add(new RagSource(
                             m.getMetadata().getString("file_name") != null ?
                                     m.getMetadata().getString("file_name") : "未知",
+                            getPage(m.getMetadata()),
                             Math.round(m.totalScore() * 100) / 100.0,
                             m.getText().substring(0, Math.min(100, m.getText().length())) + "..."
                     ));
@@ -262,6 +264,7 @@ public class RagService {
                 sources.add(new RagSource(
                         segment.metadata().getString("file_name") != null ?
                                 segment.metadata().getString("file_name") : "未知",
+                        getPage(segment.metadata()),
                         Math.round(match.score() * 100) / 100.0,
                         segment.text().substring(0, Math.min(100, segment.text().length())) + "..."
                 ));
@@ -273,6 +276,18 @@ public class RagService {
 
     private String memoryOrFallback(String memoryPrompt) {
         return memoryPrompt == null || memoryPrompt.isBlank() ? "(无相关记忆)" : memoryPrompt;
+    }
+
+    private Integer getPage(dev.langchain4j.data.document.Metadata metadata) {
+        String page = metadata.getString("page");
+        if (page == null || page.isBlank()) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(page);
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     /**

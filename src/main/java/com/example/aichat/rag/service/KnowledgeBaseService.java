@@ -39,13 +39,16 @@ public class KnowledgeBaseService {
     }
 
     public List<KnowledgeBase> listByTenant(Long tenantId) {
-        return kbRepo.findByTenantIdOrderByCreatedAtDesc(tenantId);
+        List<KnowledgeBase> knowledgeBases = kbRepo.findByTenantIdOrderByCreatedAtDesc(tenantId);
+        knowledgeBases.forEach(this::syncDocCount);
+        return knowledgeBases;
     }
 
     public KnowledgeBase getByIdAndTenant(Long id, Long tenantId) {
-        return kbRepo.findById(id)
-                .filter(kb -> kb.getTenantId().equals(tenantId))
+        KnowledgeBase kb = kbRepo.findById(id)
+                .filter(item -> item.getTenantId().equals(tenantId))
                 .orElseThrow(() -> new RuntimeException("知识库不存在"));
+        return syncDocCount(kb);
     }
 
     public KnowledgeBase update(Long id, Long tenantId, String name, String description) {
@@ -66,11 +69,27 @@ public class KnowledgeBaseService {
     }
 
     public void refreshDocCount(Long kbId) {
-        int count = docRepo.countByKbId(kbId);
         kbRepo.findById(kbId).ifPresent(kb -> {
-            kb.setDocCount(count);
-            kbRepo.save(kb);
+            syncDocCount(kb);
         });
+    }
+
+    @Transactional
+    public void deleteDocument(Long kbId, Long docId) {
+        if (!docRepo.existsByIdAndKbId(docId, kbId)) {
+            throw new RuntimeException("文档不存在");
+        }
+        docRepo.deleteById(docId);
+        refreshDocCount(kbId);
+    }
+
+    private KnowledgeBase syncDocCount(KnowledgeBase kb) {
+        int actualCount = docRepo.countByKbId(kb.getId());
+        if (kb.getDocCount() == null || kb.getDocCount() != actualCount) {
+            kb.setDocCount(actualCount);
+            return kbRepo.save(kb);
+        }
+        return kb;
     }
 
     /**

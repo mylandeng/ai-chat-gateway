@@ -178,10 +178,7 @@ public class RagChatService {
         String systemPrompt = String.format(RAG_SYSTEM_PROMPT, memoryPrompt, contextStr, historyStr);
 
         // 6. LLM 生成
-        List<dev.langchain4j.data.message.ChatMessage> messages = List.of(
-                dev.langchain4j.data.message.SystemMessage.from(systemPrompt),
-                dev.langchain4j.data.message.UserMessage.from(question)
-        );
+        List<dev.langchain4j.data.message.ChatMessage> messages = buildConversationMessages(systemPrompt, history, question);
         String answer = modelFactory.getModel(modelId).generate(messages).content().text();
 
         // 7. 保存对话
@@ -223,6 +220,8 @@ public class RagChatService {
                 retrieveByKb(rewrittenQuery, kbId, contextTexts, sources);
 
                 if (contextTexts.isEmpty()) {
+                    emitter.send(SseEmitter.event().name("session").data(
+                            Map.of("sessionId", session.getId())));
                     emitter.send(SseEmitter.event().data(
                             Map.of("content", "知识库中没有找到相关内容。")));
                     emitter.send(SseEmitter.event().data("[DONE]"));
@@ -244,10 +243,7 @@ public class RagChatService {
                 String systemPrompt = String.format(RAG_SYSTEM_PROMPT, memoryPrompt, contextStr, historyStr);
 
                 StreamingChatLanguageModel streamModel = modelFactory.getStreamingModel(finalModelId);
-                List<dev.langchain4j.data.message.ChatMessage> messages = List.of(
-                        dev.langchain4j.data.message.SystemMessage.from(systemPrompt),
-                        dev.langchain4j.data.message.UserMessage.from(question)
-                );
+                List<dev.langchain4j.data.message.ChatMessage> messages = buildConversationMessages(systemPrompt, history, question);
 
                 StringBuilder fullAnswer = new StringBuilder();
                 streamModel.generate(messages, new StreamingResponseHandler<AiMessage>() {
@@ -536,6 +532,7 @@ public class RagChatService {
             contextTexts.add(seg.text());
             sources.add(new RagSource(
                     getFileName(seg.metadata()),
+                    getPage(seg.metadata()),
                     Math.round(match.score() * 100) / 100.0,
                     seg.text().substring(0, Math.min(100, seg.text().length())) + "..."
             ));
@@ -565,6 +562,21 @@ public class RagChatService {
         return sb.toString();
     }
 
+    private List<dev.langchain4j.data.message.ChatMessage> buildConversationMessages(
+            String systemPrompt, List<RagChatMessage> history, String question) {
+        List<dev.langchain4j.data.message.ChatMessage> messages = new ArrayList<>();
+        messages.add(dev.langchain4j.data.message.SystemMessage.from(systemPrompt));
+        for (RagChatMessage message : history) {
+            if ("user".equals(message.getRole())) {
+                messages.add(dev.langchain4j.data.message.UserMessage.from(message.getContent()));
+            } else if ("assistant".equals(message.getRole())) {
+                messages.add(dev.langchain4j.data.message.AiMessage.from(message.getContent()));
+            }
+        }
+        messages.add(dev.langchain4j.data.message.UserMessage.from(question));
+        return messages;
+    }
+
     private String memoryOrFallback(String memoryPrompt) {
         return memoryPrompt == null || memoryPrompt.isBlank() ? "(无相关记忆)" : memoryPrompt;
     }
@@ -582,11 +594,25 @@ public class RagChatService {
         return name != null ? name : "未知";
     }
 
+    private Integer getPage(dev.langchain4j.data.document.Metadata metadata) {
+        String page = metadata.getString("page");
+        if (page == null || page.isBlank()) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(page);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
     private Map<String, String> metadataToMap(dev.langchain4j.data.document.Metadata metadata) {
         Map<String, String> map = new HashMap<>();
         if (metadata.getString("file_name") != null) map.put("file_name", metadata.getString("file_name"));
         if (metadata.getString("doc_id") != null) map.put("doc_id", metadata.getString("doc_id"));
         if (metadata.getString("kb_id") != null) map.put("kb_id", metadata.getString("kb_id"));
+        if (metadata.getString("page") != null) map.put("page", metadata.getString("page"));
+        if (metadata.getString("page_count") != null) map.put("page_count", metadata.getString("page_count"));
         return map;
     }
 }

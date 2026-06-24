@@ -1,9 +1,11 @@
+# syntax=docker/dockerfile:1.7
+
 # 第一阶段：构建前端
 FROM node:18-alpine AS builder
 
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm npm ci
 COPY . .
 RUN npm run build
 
