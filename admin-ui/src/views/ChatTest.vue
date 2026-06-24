@@ -34,7 +34,7 @@
         <div class="nx-log-body" :class="{ 'user-text': msg.role === 'user' }">
           <template v-if="msg.role === 'user'">{{ msg.content }}</template>
           <template v-else>
-            <span>{{ msg.content }}</span>
+            <div class="nx-markdown" v-html="renderMd(msg.content)"></div>
             <span v-if="i === messages.length - 1 && isStreaming" class="nx-log-cursor"></span>
           </template>
         </div>
@@ -52,7 +52,12 @@
 </template>
 
 <script setup>
-import { ref, nextTick } from 'vue'
+import { ref, nextTick, onMounted, watch } from 'vue'
+import { renderMarkdown } from '@/utils/markdown'
+
+const CHAT_STORAGE_KEY = 'nx-chat-test-messages'
+const MODEL_STORAGE_KEY = 'nx-chat-test-model'
+const MAX_SAVED_MESSAGES = 100
 
 const messages = ref([])
 const inputMsg = ref('')
@@ -60,12 +65,39 @@ const model = ref('deepseek-chat')
 const isStreaming = ref(false)
 const messagesRef = ref(null)
 
+function normalizeMarkdown(text) {
+  if (!text) return ''
+  return text
+    .replace(/```([A-Za-z0-9_-]+)[ \t]+/g, '```$1\n')
+    .replace(/[ \t]+```/g, '\n```')
+}
+
+function renderMd(text) { return renderMarkdown(normalizeMarkdown(text)) }
+
 function now() {
   return new Date().toLocaleTimeString('en-GB', { hour12: false })
 }
 
 function clearChat() {
   messages.value = []
+  localStorage.removeItem(CHAT_STORAGE_KEY)
+}
+
+function loadChatState() {
+  const savedModel = localStorage.getItem(MODEL_STORAGE_KEY)
+  if (savedModel) model.value = savedModel
+
+  try {
+    const savedMessages = JSON.parse(localStorage.getItem(CHAT_STORAGE_KEY) || '[]')
+    if (Array.isArray(savedMessages)) messages.value = savedMessages
+  } catch (e) {
+    localStorage.removeItem(CHAT_STORAGE_KEY)
+  }
+}
+
+function saveChatState() {
+  const recentMessages = messages.value.slice(-MAX_SAVED_MESSAGES)
+  localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(recentMessages))
 }
 
 function scrollToBottom() {
@@ -129,6 +161,14 @@ async function send() {
     isStreaming.value = false
   }
 }
+
+onMounted(() => {
+  loadChatState()
+  scrollToBottom()
+})
+
+watch(messages, saveChatState, { deep: true })
+watch(model, value => localStorage.setItem(MODEL_STORAGE_KEY, value))
 </script>
 
 <style scoped>

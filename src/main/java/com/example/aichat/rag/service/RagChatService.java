@@ -1,10 +1,12 @@
 package com.example.aichat.rag.service;
 
+import com.example.aichat.context.RequestContext;
 import com.example.aichat.rag.model.*;
 import com.example.aichat.rag.repository.KnowledgeDocumentRepository;
 import com.example.aichat.rag.repository.RagChatMessageRepository;
 import com.example.aichat.rag.repository.RagChatSessionRepository;
 import com.example.aichat.service.ChatModelFactory;
+import com.example.aichat.service.LongTermMemoryService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.data.message.AiMessage;
@@ -21,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -37,6 +40,7 @@ public class RagChatService {
     private final RagChatSessionRepository sessionRepo;
     private final RagChatMessageRepository messageRepo;
     private final KnowledgeDocumentRepository documentRepo;
+    private final LongTermMemoryService memoryService;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
@@ -105,6 +109,9 @@ public class RagChatService {
             - 注意上下文语境，理解用户追问的意图
             - 使用简洁清晰的语言
 
+            长期记忆：
+            %s
+
             参考资料：
             %s
 
@@ -118,7 +125,8 @@ public class RagChatService {
                           ChatModelFactory modelFactory,
                           RagChatSessionRepository sessionRepo,
                           RagChatMessageRepository messageRepo,
-                          KnowledgeDocumentRepository documentRepo) {
+                          KnowledgeDocumentRepository documentRepo,
+                          LongTermMemoryService memoryService) {
         this.vectorStoreService = vectorStoreService;
         this.hybridRetrievalService = hybridRetrievalService;
         this.rerankService = rerankService;
@@ -126,6 +134,7 @@ public class RagChatService {
         this.sessionRepo = sessionRepo;
         this.messageRepo = messageRepo;
         this.documentRepo = documentRepo;
+        this.memoryService = memoryService;
     }
 
     /**
@@ -144,6 +153,8 @@ public class RagChatService {
 
         // 3. Query 改写
         String rewrittenQuery = rewriteQuery(question, history, modelId);
+        String userId = memoryService.resolveUserId(tenantId, RequestContext.get("keyId"));
+        String memoryPrompt = memoryOrFallback(memoryService.buildMemoryPrompt(userId, question));
 
         // 4. 检索
         List<String> contextTexts = new ArrayList<>();
@@ -164,24 +175,23 @@ public class RagChatService {
             contextStr.append(String.format("[%d] %s\n\n", i + 1, contextTexts.get(i)));
         }
         String historyStr = buildHistoryString(history);
-        String systemPrompt = String.format(RAG_SYSTEM_PROMPT, contextStr, historyStr);
+        String systemPrompt = String.format(RAG_SYSTEM_PROMPT, memoryPrompt, contextStr, historyStr);
 
         // 6. LLM 生成
-        List<dev.langchain4j.data.message.ChatMessage> messages = List.of(
-                dev.langchain4j.data.message.SystemMessage.from(systemPrompt),
-                dev.langchain4j.data.message.UserMessage.from(question)
-        );
+        List<dev.langchain4j.data.message.ChatMessage> messages = buildConversationMessages(systemPrompt, history, question);
         String answer = modelFactory.getModel(modelId).generate(messages).content().text();
 
         // 7. 保存对话
         saveMessage(session.getId(), "user", question, rewrittenQuery, null);
         saveMessage(session.getId(), "assistant", answer, null, sourcesToJson(sources));
+        memoryService.addConversation(userId, question, answer);
 
         // 8. 更新 title
         if (session.getTitle() == null) {
             session.setTitle(question.length() > 50 ? question.substring(0, 50) + "..." : question);
-            sessionRepo.save(session);
         }
+        session.setUpdatedAt(LocalDateTime.now());
+        sessionRepo.save(session);
 
         return Map.of("answer", answer, "sources", sources,
                 "sessionId", session.getId(), "rewrittenQuery", rewrittenQuery);
@@ -195,18 +205,23 @@ public class RagChatService {
         modelId = modelId != null ? modelId : DEFAULT_MODEL;
         SseEmitter emitter = new SseEmitter(120_000L);
         final String finalModelId = modelId;
+        final String keyId = RequestContext.get("keyId");
 
         executor.submit(() -> {
             try {
                 RagChatSession session = getOrCreateSession(kbId, sessionId, tenantId);
                 List<RagChatMessage> history = loadHistory(session.getId());
                 String rewrittenQuery = rewriteQuery(question, history, finalModelId);
+                String userId = memoryService.resolveUserId(tenantId, keyId);
+                String memoryPrompt = memoryOrFallback(memoryService.buildMemoryPrompt(userId, question));
 
                 List<String> contextTexts = new ArrayList<>();
                 List<RagSource> sources = new ArrayList<>();
                 retrieveByKb(rewrittenQuery, kbId, contextTexts, sources);
 
                 if (contextTexts.isEmpty()) {
+                    emitter.send(SseEmitter.event().name("session").data(
+                            Map.of("sessionId", session.getId())));
                     emitter.send(SseEmitter.event().data(
                             Map.of("content", "知识库中没有找到相关内容。")));
                     emitter.send(SseEmitter.event().data("[DONE]"));
@@ -225,13 +240,10 @@ public class RagChatService {
                     contextStr.append(String.format("[%d] %s\n\n", i + 1, contextTexts.get(i)));
                 }
                 String historyStr = buildHistoryString(history);
-                String systemPrompt = String.format(RAG_SYSTEM_PROMPT, contextStr, historyStr);
+                String systemPrompt = String.format(RAG_SYSTEM_PROMPT, memoryPrompt, contextStr, historyStr);
 
                 StreamingChatLanguageModel streamModel = modelFactory.getStreamingModel(finalModelId);
-                List<dev.langchain4j.data.message.ChatMessage> messages = List.of(
-                        dev.langchain4j.data.message.SystemMessage.from(systemPrompt),
-                        dev.langchain4j.data.message.UserMessage.from(question)
-                );
+                List<dev.langchain4j.data.message.ChatMessage> messages = buildConversationMessages(systemPrompt, history, question);
 
                 StringBuilder fullAnswer = new StringBuilder();
                 streamModel.generate(messages, new StreamingResponseHandler<AiMessage>() {
@@ -252,11 +264,13 @@ public class RagChatService {
                             saveMessage(session.getId(), "user", question, rewrittenQuery, null);
                             saveMessage(session.getId(), "assistant", fullAnswer.toString(),
                                     null, sourcesToJson(sources));
+                            memoryService.addConversation(userId, question, fullAnswer.toString());
                             if (session.getTitle() == null) {
                                 session.setTitle(question.length() > 50 ?
                                         question.substring(0, 50) + "..." : question);
-                                sessionRepo.save(session);
                             }
+                            session.setUpdatedAt(LocalDateTime.now());
+                            sessionRepo.save(session);
 
                             emitter.send(SseEmitter.event().data("[DONE]"));
                             emitter.complete();
@@ -352,7 +366,7 @@ public class RagChatService {
         for (int i = 0; i < topMatches.size(); i++) {
             contextStr.append(String.format("[%d] %s\n\n", i + 1, topMatches.get(i).text()));
         }
-        String fullPrompt = String.format(RAG_SYSTEM_PROMPT, contextStr, "(无历史)");
+        String fullPrompt = String.format(RAG_SYSTEM_PROMPT, "(无相关记忆)", contextStr, "(无历史)");
 
         String mode = hybridEnabled ? (rerankEnabled ? "hybrid_rerank" : "hybrid") : "vector";
 
@@ -405,7 +419,7 @@ public class RagChatService {
         for (int i = 0; i < contextTexts.size(); i++) {
             contextStr.append(String.format("[%d] %s\n\n", i + 1, contextTexts.get(i)));
         }
-        String systemPrompt = String.format(RAG_SYSTEM_PROMPT, contextStr, "(无历史)");
+        String systemPrompt = String.format(RAG_SYSTEM_PROMPT, "(无相关记忆)", contextStr, "(无历史)");
 
         List<dev.langchain4j.data.message.ChatMessage> messages = List.of(
                 dev.langchain4j.data.message.SystemMessage.from(systemPrompt),
@@ -439,7 +453,7 @@ public class RagChatService {
                 for (int i = 0; i < contextTexts.size(); i++) {
                     contextStr.append(String.format("[%d] %s\n\n", i + 1, contextTexts.get(i)));
                 }
-                String systemPrompt = String.format(RAG_SYSTEM_PROMPT, contextStr, "(无历史)");
+                String systemPrompt = String.format(RAG_SYSTEM_PROMPT, "(无相关记忆)", contextStr, "(无历史)");
 
                 StreamingChatLanguageModel streamModel = modelFactory.getStreamingModel(fModelId);
                 List<dev.langchain4j.data.message.ChatMessage> msgs = List.of(
@@ -518,6 +532,7 @@ public class RagChatService {
             contextTexts.add(seg.text());
             sources.add(new RagSource(
                     getFileName(seg.metadata()),
+                    getPage(seg.metadata()),
                     Math.round(match.score() * 100) / 100.0,
                     seg.text().substring(0, Math.min(100, seg.text().length())) + "..."
             ));
@@ -541,10 +556,29 @@ public class RagChatService {
         for (RagChatMessage msg : history) {
             sb.append(msg.getRole().equals("user") ? "用户: " : "助手: ");
             String content = msg.getContent();
-            if (content.length() > 200) content = content.substring(0, 200) + "...";
+            if (content.length() > 800) content = content.substring(0, 800) + "...";
             sb.append(content).append("\n");
         }
         return sb.toString();
+    }
+
+    private List<dev.langchain4j.data.message.ChatMessage> buildConversationMessages(
+            String systemPrompt, List<RagChatMessage> history, String question) {
+        List<dev.langchain4j.data.message.ChatMessage> messages = new ArrayList<>();
+        messages.add(dev.langchain4j.data.message.SystemMessage.from(systemPrompt));
+        for (RagChatMessage message : history) {
+            if ("user".equals(message.getRole())) {
+                messages.add(dev.langchain4j.data.message.UserMessage.from(message.getContent()));
+            } else if ("assistant".equals(message.getRole())) {
+                messages.add(dev.langchain4j.data.message.AiMessage.from(message.getContent()));
+            }
+        }
+        messages.add(dev.langchain4j.data.message.UserMessage.from(question));
+        return messages;
+    }
+
+    private String memoryOrFallback(String memoryPrompt) {
+        return memoryPrompt == null || memoryPrompt.isBlank() ? "(无相关记忆)" : memoryPrompt;
     }
 
     private String sourcesToJson(List<RagSource> sources) {
@@ -560,11 +594,25 @@ public class RagChatService {
         return name != null ? name : "未知";
     }
 
+    private Integer getPage(dev.langchain4j.data.document.Metadata metadata) {
+        String page = metadata.getString("page");
+        if (page == null || page.isBlank()) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(page);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
     private Map<String, String> metadataToMap(dev.langchain4j.data.document.Metadata metadata) {
         Map<String, String> map = new HashMap<>();
         if (metadata.getString("file_name") != null) map.put("file_name", metadata.getString("file_name"));
         if (metadata.getString("doc_id") != null) map.put("doc_id", metadata.getString("doc_id"));
         if (metadata.getString("kb_id") != null) map.put("kb_id", metadata.getString("kb_id"));
+        if (metadata.getString("page") != null) map.put("page", metadata.getString("page"));
+        if (metadata.getString("page_count") != null) map.put("page_count", metadata.getString("page_count"));
         return map;
     }
 }

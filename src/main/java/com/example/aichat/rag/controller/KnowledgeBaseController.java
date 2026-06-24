@@ -117,8 +117,7 @@ public class KnowledgeBaseController {
     public Map<String, String> deleteDocument(@PathVariable Long kbId, @PathVariable Long docId) {
         Long tenantId = RequestContext.get("tenantId");
         kbService.getByIdAndTenant(kbId, tenantId);
-        docRepo.deleteById(docId);
-        kbService.refreshDocCount(kbId);
+        kbService.deleteDocument(kbId, docId);
         return Map.of("status", "deleted");
     }
 

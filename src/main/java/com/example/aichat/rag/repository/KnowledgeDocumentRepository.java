@@ -13,5 +13,7 @@ public interface KnowledgeDocumentRepository extends JpaRepository<KnowledgeDocu
 
     int countByKbId(Long kbId);
 
+    boolean existsByIdAndKbId(Long id, Long kbId);
+
     void deleteByKbId(Long kbId);
 }

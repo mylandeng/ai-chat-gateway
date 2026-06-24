@@ -46,17 +46,29 @@ services:
       SPRING_DATASOURCE_USERNAME: root
       SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD:-root123}
       SPRING_DATA_REDIS_HOST: redis
+      PGVECTOR_HOST: pgvector
+      PGVECTOR_PORT: 5432
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      DASHSCOPE_API_KEY: sk-a963f2273dfd47d4bc4df883952230f0
-      DEEPSEEK_API_KEY: sk-3edea377595b4b96b200b460160b0696
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      DASHSCOPE_BASE_URL: ${DASHSCOPE_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
+      DASHSCOPE_MEMORY_ENABLED: ${DASHSCOPE_MEMORY_ENABLED:-false}
+      DASHSCOPE_MEMORY_BASE_URL: ${DASHSCOPE_MEMORY_BASE_URL:-https://dashscope.aliyuncs.com/api/v2/apps/memory}
+      DASHSCOPE_MEMORY_LIBRARY_ID: ${DASHSCOPE_MEMORY_LIBRARY_ID:-}
+      DASHSCOPE_MEMORY_TOP_K: ${DASHSCOPE_MEMORY_TOP_K:-5}
+      DASHSCOPE_MEMORY_MIN_SCORE: ${DASHSCOPE_MEMORY_MIN_SCORE:-0.3}
+      DASHSCOPE_MEMORY_ENABLE_REWRITE: ${DASHSCOPE_MEMORY_ENABLE_REWRITE:-false}
+      DASHSCOPE_MEMORY_ENABLE_RERANK: ${DASHSCOPE_MEMORY_ENABLE_RERANK:-false}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     depends_on:
       mysql:
         condition: service_healthy
       redis:
         condition: service_healthy
+      pgvector:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/api/models"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/api/models"]
       interval: 15s
       timeout: 5s
       retries: 10
@@ -64,12 +76,11 @@ services:
 
   # Nginx（前端 + 反向代理）
   nginx:
-    image: nginx:alpine
+    build: ./admin-ui
     container_name: ai-chat-nginx
     ports:
-      - "80:80"
+      - "8081:80"
     volumes:
-      - ./admin-ui/dist:/usr/share/nginx/html:ro
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       app:

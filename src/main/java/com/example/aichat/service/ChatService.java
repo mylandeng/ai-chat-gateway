@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -27,14 +28,16 @@ public class ChatService {
     private final ChatModelFactory modelFactory;
     private final ConversationManager conversationManager;
     private final UsageService usageService;
+    private final LongTermMemoryService memoryService;
 
     private static final String DEFAULT_MODEL = "deepseek-chat";
 
     public ChatService(ChatModelFactory modelFactory, ConversationManager conversationManager,
-                       UsageService usageService) {
+                       UsageService usageService, LongTermMemoryService memoryService) {
         this.modelFactory = modelFactory;
         this.conversationManager = conversationManager;
         this.usageService = usageService;
+        this.memoryService = memoryService;
     }
 
     /**
@@ -50,7 +53,15 @@ public class ChatService {
 
         try {
             ChatLanguageModel model = modelFactory.getModel(modelId);
-            String reply = model.generate(request.message());
+            String userId = memoryService.resolveUserId(tenantId, keyId);
+            String memoryPrompt = memoryService.buildMemoryPrompt(userId, request.message());
+            List<dev.langchain4j.data.message.ChatMessage> messages = new ArrayList<>();
+            if (!memoryPrompt.isBlank()) {
+                messages.add(SystemMessage.from(memoryPrompt));
+            }
+            messages.add(UserMessage.from(request.message()));
+            Response<AiMessage> response = model.generate(messages);
+            String reply = response.content().text();
             int duration = (int) (System.currentTimeMillis() - start);
             log.info("[单轮] 模型返回成功, modelId={}, 耗时={}ms, 回复内容={}", modelId, duration, reply);
 
@@ -58,6 +69,7 @@ public class ChatService {
             int estimatedTokens = (request.message().length() + reply.length()) / 2 + 20;
             usageService.logCall(keyId, tenantId, modelId, estimatedTokens / 3, estimatedTokens * 2 / 3,
                 duration, "success", null);
+            memoryService.addConversation(userId, request.message(), reply);
 
             return new ChatResponse(reply, modelId, estimatedTokens);
         } catch (Exception e) {
@@ -82,13 +94,22 @@ public class ChatService {
         final String finalModelId = modelId;
         final String keyId = RequestContext.get("keyId");
         final Long tenantId = RequestContext.get("tenantId");
+        final String userId = memoryService.resolveUserId(tenantId, keyId);
+        String memoryPrompt = memoryService.buildMemoryPrompt(userId, message);
+        List<dev.langchain4j.data.message.ChatMessage> messages = new ArrayList<>();
+        if (!memoryPrompt.isBlank()) {
+            messages.add(SystemMessage.from(memoryPrompt));
+        }
+        messages.add(UserMessage.from(message));
 
-        model.generate(message, new StreamingResponseHandler<AiMessage>() {
+        model.generate(messages, new StreamingResponseHandler<AiMessage>() {
             private int tokenCount = 0;
+            private final StringBuilder fullAnswer = new StringBuilder();
 
             @Override
             public void onNext(String token) {
                 tokenCount++;
+                fullAnswer.append(token);
                 try {
                     log.info("[流式] 调用模型内容: [{}]", token);
                     emitter.send(SseEmitter.event()
@@ -105,6 +126,7 @@ public class ChatService {
                 log.info("[流式] 完成, modelId={}, token数={}, 耗时={}ms", finalModelId, tokenCount, duration);
                 usageService.logCall(keyId, tenantId, finalModelId, tokenCount / 3, tokenCount * 2 / 3,
                     duration, "success", null);
+                memoryService.addConversation(userId, message, fullAnswer.toString());
                 try {
                     emitter.send(SseEmitter.event().data("[DONE]"));
                     emitter.complete();
@@ -156,7 +178,14 @@ public class ChatService {
 
         try {
             ChatLanguageModel model = modelFactory.getModel(modelId);
-            Response<AiMessage> response = model.generate(messages);
+            String userId = memoryService.resolveUserId(tenantId, keyId);
+            String memoryPrompt = memoryService.buildMemoryPrompt(userId, request.message());
+            List<dev.langchain4j.data.message.ChatMessage> finalMessages = new ArrayList<>();
+            if (!memoryPrompt.isBlank()) {
+                finalMessages.add(SystemMessage.from(memoryPrompt));
+            }
+            finalMessages.addAll(messages);
+            Response<AiMessage> response = model.generate(finalMessages);
             String reply = response.content().text();
             int tokens = response.tokenUsage() != null ? response.tokenUsage().totalTokenCount() : 0;
             int promptTokens = response.tokenUsage() != null ? response.tokenUsage().inputTokenCount() : 0;
@@ -168,6 +197,7 @@ public class ChatService {
             // 记录调用日志
             usageService.logCall(keyId, tenantId, modelId, promptTokens, completionTokens,
                 duration, "success", null);
+            memoryService.addConversation(userId, request.message(), reply);
 
             // 保存 AI 回复
             conversationManager.addMessage(sessionId, "assistant", reply);

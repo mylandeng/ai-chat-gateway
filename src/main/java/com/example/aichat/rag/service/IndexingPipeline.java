@@ -14,10 +14,10 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 @Service
 public class IndexingPipeline {
@@ -93,15 +93,7 @@ public class IndexingPipeline {
         try {
             log.info("[Indexing] 开始处理文档: id={}, name={}", docId, doc.getFileName());
 
-            // Step 1: 从磁盘路径解析文档
-            Document parsed = parseService.parseFile(Path.of(filePath));
-            String text = parsed.text();
-            doc.setCharCount(text.length());
-            doc.setStatus(1);
-            documentRepo.save(doc);
-            log.info("[Indexing] 解析完成: id={}, 字符数={}", docId, text.length());
-
-            // Step 2: 文本切片（metadata 中带 tenant_id/kb_id 用于检索隔离）
+            // Step 1: 构造基础 metadata（PDF 会按页继承并补充 page）
             Map<String, String> metadata = new java.util.HashMap<>(Map.of(
                     "doc_id", String.valueOf(doc.getId()),
                     "tenant_id", String.valueOf(doc.getTenantId()),
@@ -110,15 +102,28 @@ public class IndexingPipeline {
             if (doc.getKbId() != null) {
                 metadata.put("kb_id", String.valueOf(doc.getKbId()));
             }
-            List<TextSegment> segments = chunkService.splitText(text, metadata);
+
+            // Step 2: 从磁盘路径解析文档。PDF 按页生成 Document(page=n)，非 PDF 保持单文档。
+            List<Document> parsedDocuments = parseService.parseFileToDocuments(Path.of(filePath), metadata);
+            int charCount = parsedDocuments.stream().mapToInt(parsed -> parsed.text().length()).sum();
+            doc.setCharCount(charCount);
+            doc.setStatus(1);
+            documentRepo.save(doc);
+            log.info("[Indexing] 解析完成: id={}, 文档单元={}, 字符数={}", docId, parsedDocuments.size(), charCount);
+
+            // Step 3: 文本切片（metadata 中带 tenant_id/kb_id/page 用于检索隔离和引用定位）
+            List<TextSegment> segments = new ArrayList<>();
+            for (Document parsed : parsedDocuments) {
+                segments.addAll(chunkService.split(parsed));
+            }
             doc.setChunkCount(segments.size());
             documentRepo.save(doc);
             log.info("[Indexing] 切片完成: id={}, 切片数={}", docId, segments.size());
 
-            // Step 3: 向量化并存入 PgVector
+            // Step 4: 向量化并存入 PgVector
             storedEmbeddingIds = vectorStoreService.storeAll(segments);
 
-            // Step 4: 更新状态
+            // Step 5: 更新状态
             doc.setStatus(2);
             documentRepo.save(doc);
             log.info("[Indexing] 文档处理完成: id={}, name={}", docId, doc.getFileName());

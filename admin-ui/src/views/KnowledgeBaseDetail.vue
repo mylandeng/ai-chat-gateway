@@ -185,7 +185,12 @@ function pollDocuments() {
 }
 
 async function handleDeleteDoc(docId) {
-  try { await deleteKbDocument(kbId.value, docId); ElMessage.success('已删除'); loadDocs() } catch (e) {}
+  try {
+    await deleteKbDocument(kbId.value, docId)
+    ElMessage.success('已删除')
+    loadDocs()
+    loadKb()
+  } catch (e) {}
 }
 
 async function handleGitHubImport() {

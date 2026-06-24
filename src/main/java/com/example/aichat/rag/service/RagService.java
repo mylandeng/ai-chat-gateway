@@ -1,10 +1,12 @@
 package com.example.aichat.rag.service;
 
+import com.example.aichat.context.RequestContext;
 import com.example.aichat.rag.model.HybridMatch;
 import com.example.aichat.rag.model.RagResponse;
 import com.example.aichat.rag.model.RagSource;
 import com.example.aichat.rag.model.RerankResult;
 import com.example.aichat.service.ChatModelFactory;
+import com.example.aichat.service.LongTermMemoryService;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.StreamingResponseHandler;
@@ -32,6 +34,7 @@ public class RagService {
     private final ChatModelFactory modelFactory;
     private final HybridRetrievalService hybridRetrievalService;
     private final RerankService rerankService;
+    private final LongTermMemoryService memoryService;
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
     @Value("${rag.retrieval.max-results:5}")
@@ -57,6 +60,9 @@ public class RagService {
             - 回答时尽量引用原文中的关键信息
             - 使用简洁清晰的语言
 
+            长期记忆：
+            %s
+
             参考资料：
             %s
             """;
@@ -64,11 +70,13 @@ public class RagService {
     public RagService(VectorStoreService vectorStoreService,
                       ChatModelFactory modelFactory,
                       HybridRetrievalService hybridRetrievalService,
-                      RerankService rerankService) {
+                      RerankService rerankService,
+                      LongTermMemoryService memoryService) {
         this.vectorStoreService = vectorStoreService;
         this.modelFactory = modelFactory;
         this.hybridRetrievalService = hybridRetrievalService;
         this.rerankService = rerankService;
+        this.memoryService = memoryService;
     }
 
     /**
@@ -77,6 +85,8 @@ public class RagService {
     public RagResponse chat(String question, String modelId, Long tenantId) {
         modelId = modelId != null ? modelId : DEFAULT_MODEL;
         log.info("[RAG] 问答: question='{}', model={}, tenantId={}", question, modelId, tenantId);
+        String userId = memoryService.resolveUserId(tenantId, RequestContext.get("keyId"));
+        String memoryPrompt = memoryOrFallback(memoryService.buildMemoryPrompt(userId, question));
 
         // 1. 检索（向量 or 混合）
         RetrievalContext ctx = retrieve(question, tenantId);
@@ -93,7 +103,7 @@ public class RagService {
         }
 
         // 3. 调用 LLM
-        String systemPrompt = String.format(RAG_SYSTEM_PROMPT, contextStr);
+        String systemPrompt = String.format(RAG_SYSTEM_PROMPT, memoryPrompt, contextStr);
         ChatLanguageModel model = modelFactory.getModel(modelId);
 
         List<dev.langchain4j.data.message.ChatMessage> messages = List.of(
@@ -102,6 +112,7 @@ public class RagService {
         );
 
         String answer = model.generate(messages).content().text();
+        memoryService.addConversation(userId, question, answer);
         log.info("[RAG] 回答生成完成, 来源数={}", ctx.sources.size());
 
         return new RagResponse(answer, ctx.sources, question);
@@ -116,9 +127,13 @@ public class RagService {
         SseEmitter emitter = new SseEmitter(120_000L);
 
         final String finalModelId = modelId;
+        final String keyId = RequestContext.get("keyId");
 
         executor.submit(() -> {
             try {
+                String userId = memoryService.resolveUserId(tenantId, keyId);
+                String memoryPrompt = memoryOrFallback(memoryService.buildMemoryPrompt(userId, question));
+
                 // 1. 检索（向量 or 混合）
                 RetrievalContext ctx = retrieve(question, tenantId);
 
@@ -142,7 +157,7 @@ public class RagService {
                 }
 
                 // 3. 流式调用 LLM
-                String systemPrompt = String.format(RAG_SYSTEM_PROMPT, contextStr);
+                String systemPrompt = String.format(RAG_SYSTEM_PROMPT, memoryPrompt, contextStr);
                 StreamingChatLanguageModel streamModel = modelFactory.getStreamingModel(finalModelId);
 
                 List<dev.langchain4j.data.message.ChatMessage> messages = List.of(
@@ -151,8 +166,11 @@ public class RagService {
                 );
 
                 streamModel.generate(messages, new StreamingResponseHandler<AiMessage>() {
+                    private final StringBuilder fullAnswer = new StringBuilder();
+
                     @Override
                     public void onNext(String token) {
+                        fullAnswer.append(token);
                         try {
                             emitter.send(SseEmitter.event().data(Map.of("content", token)));
                         } catch (IOException e) {
@@ -163,6 +181,7 @@ public class RagService {
                     @Override
                     public void onComplete(Response<AiMessage> response) {
                         try {
+                            memoryService.addConversation(userId, question, fullAnswer.toString());
                             emitter.send(SseEmitter.event().data("[DONE]"));
                             emitter.complete();
                         } catch (IOException e) {
@@ -216,6 +235,7 @@ public class RagService {
                     sources.add(new RagSource(
                             original.getMetadata().getString("file_name") != null ?
                                     original.getMetadata().getString("file_name") : "未知",
+                            getPage(original.getMetadata()),
                             r.score(),
                             r.text().substring(0, Math.min(100, r.text().length())) + "..."
                     ));
@@ -227,6 +247,7 @@ public class RagService {
                     sources.add(new RagSource(
                             m.getMetadata().getString("file_name") != null ?
                                     m.getMetadata().getString("file_name") : "未知",
+                            getPage(m.getMetadata()),
                             Math.round(m.totalScore() * 100) / 100.0,
                             m.getText().substring(0, Math.min(100, m.getText().length())) + "..."
                     ));
@@ -243,6 +264,7 @@ public class RagService {
                 sources.add(new RagSource(
                         segment.metadata().getString("file_name") != null ?
                                 segment.metadata().getString("file_name") : "未知",
+                        getPage(segment.metadata()),
                         Math.round(match.score() * 100) / 100.0,
                         segment.text().substring(0, Math.min(100, segment.text().length())) + "..."
                 ));
@@ -250,6 +272,22 @@ public class RagService {
         }
 
         return new RetrievalContext(contextTexts, sources);
+    }
+
+    private String memoryOrFallback(String memoryPrompt) {
+        return memoryPrompt == null || memoryPrompt.isBlank() ? "(无相关记忆)" : memoryPrompt;
+    }
+
+    private Integer getPage(dev.langchain4j.data.document.Metadata metadata) {
+        String page = metadata.getString("page");
+        if (page == null || page.isBlank()) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(page);
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     /**

@@ -45,8 +45,9 @@ ai:
 
       # === 通义千问 (DashScope) ===
       qwen-plus:
-        provider: DASHSCOPE
+        provider: OPENAI
         api-key: ${DASHSCOPE_API_KEY:}
+        base-url: ${DASHSCOPE_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
         model-name: qwen-plus
         temperature: 0.7
         max-tokens: 2000
@@ -79,7 +80,7 @@ rag:
     password: ${PGVECTOR_PASSWORD:postgres}
   embedding:
     api-key: ${DASHSCOPE_API_KEY:}
-    base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
+    base-url: ${DASHSCOPE_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
     model-name: text-embedding-v3
     dimension: 1024
 
@@ -112,6 +113,17 @@ rag:
       - text/plain
       - text/csv
       - text/markdown
+
+# 长期记忆配置（阿里云百炼 Model Studio Memory API）
+memory:
+  enabled: ${DASHSCOPE_MEMORY_ENABLED:false}
+  api-key: ${DASHSCOPE_API_KEY:}
+  base-url: ${DASHSCOPE_MEMORY_BASE_URL:https://dashscope.aliyuncs.com/api/v2/apps/memory}
+  library-id: ${DASHSCOPE_MEMORY_LIBRARY_ID:}
+  top-k: ${DASHSCOPE_MEMORY_TOP_K:5}
+  min-score: ${DASHSCOPE_MEMORY_MIN_SCORE:0.3}
+  enable-rewrite: ${DASHSCOPE_MEMORY_ENABLE_REWRITE:false}
+  enable-rerank: ${DASHSCOPE_MEMORY_ENABLE_RERANK:false}
 
 # Agent 工具配置 (W5)
 agent:
