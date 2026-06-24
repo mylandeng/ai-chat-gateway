@@ -36,7 +36,7 @@
         </el-menu-item>
         <el-menu-item index="/knowledge">
           <span class="nx-nav-prefix">[RAG]</span>
-          <span>RAG 测试(旧版)</span>
+          <span>RAG 测试</span>
         </el-menu-item>
         <el-menu-item index="/agents">
           <span class="nx-nav-prefix">[AGT]</span>

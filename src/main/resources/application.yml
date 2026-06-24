@@ -124,6 +124,8 @@ memory:
   min-score: ${DASHSCOPE_MEMORY_MIN_SCORE:0.3}
   enable-rewrite: ${DASHSCOPE_MEMORY_ENABLE_REWRITE:false}
   enable-rerank: ${DASHSCOPE_MEMORY_ENABLE_RERANK:false}
+  profile-schema-ids: ${DASHSCOPE_MEMORY_PROFILE_SCHEMA_IDS:}
+  profile-write-schema-id: ${DASHSCOPE_MEMORY_PROFILE_WRITE_SCHEMA_ID:}
 
 # Agent 工具配置 (W5)
 agent:
