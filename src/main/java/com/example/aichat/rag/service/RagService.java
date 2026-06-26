@@ -1,9 +1,9 @@
 package com.example.aichat.rag.service;
 
 import com.example.aichat.context.RequestContext;
-import com.example.aichat.rag.model.HybridMatch;
 import com.example.aichat.rag.model.RagResponse;
 import com.example.aichat.rag.model.RagSource;
+import com.example.aichat.rag.model.RetrievedChunk;
 import com.example.aichat.rag.model.RerankResult;
 import com.example.aichat.service.ChatModelFactory;
 import com.example.aichat.service.LongTermMemoryService;
@@ -13,7 +13,6 @@ import dev.langchain4j.model.StreamingResponseHandler;
 import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.output.Response;
-import dev.langchain4j.store.embedding.EmbeddingMatch;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -30,21 +29,14 @@ public class RagService {
 
     private static final Logger log = LoggerFactory.getLogger(RagService.class);
 
-    private final VectorStoreService vectorStoreService;
+    private final RagRetrievalRouter retrievalRouter;
     private final ChatModelFactory modelFactory;
-    private final HybridRetrievalService hybridRetrievalService;
     private final RerankService rerankService;
     private final LongTermMemoryService memoryService;
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
     @Value("${rag.retrieval.max-results:5}")
     private int maxResults;
-
-    @Value("${rag.retrieval.min-score:0.6}")
-    private double minScore;
-
-    @Value("${rag.hybrid.enabled:false}")
-    private boolean hybridEnabled;
 
     @Value("${rag.rerank.enabled:false}")
     private boolean rerankEnabled;
@@ -85,14 +77,12 @@ public class RagService {
             %s
             """;
 
-    public RagService(VectorStoreService vectorStoreService,
+    public RagService(RagRetrievalRouter retrievalRouter,
                       ChatModelFactory modelFactory,
-                      HybridRetrievalService hybridRetrievalService,
                       RerankService rerankService,
                       LongTermMemoryService memoryService) {
-        this.vectorStoreService = vectorStoreService;
+        this.retrievalRouter = retrievalRouter;
         this.modelFactory = modelFactory;
-        this.hybridRetrievalService = hybridRetrievalService;
         this.rerankService = rerankService;
         this.memoryService = memoryService;
     }
@@ -232,23 +222,7 @@ public class RagService {
         List<String> contextTexts = new ArrayList<>();
         List<RagSource> sources = new ArrayList<>();
         int candidateCount = Math.max(maxResults * 4, 20);
-        List<RetrievedChunk> candidates;
-
-        if (hybridEnabled) {
-            List<HybridMatch> matches = hybridRetrievalService.hybridSearch(
-                    question, candidateCount, tenantId);
-            candidates = matches.stream()
-                    .map(match -> new RetrievedChunk(
-                            TextSegment.from(match.getText(), match.getMetadata()),
-                            match.totalScore()))
-                    .toList();
-        } else {
-            List<EmbeddingMatch<TextSegment>> matches =
-                    vectorStoreService.search(question, candidateCount, minScore, tenantId);
-            candidates = matches.stream()
-                    .map(match -> new RetrievedChunk(match.embedded(), match.score()))
-                    .toList();
-        }
+        List<RetrievedChunk> candidates = retrievalRouter.retrieveByTenant(question, tenantId, candidateCount);
 
         if (candidates.isEmpty()) {
             return new RetrievalContext(List.of(), List.of());
@@ -256,7 +230,7 @@ public class RagService {
 
         List<RetrievedChunk> selected = rerankOrBoost(question, candidates, maxResults);
         for (RetrievedChunk chunk : selected) {
-            TextSegment segment = chunk.segment();
+            TextSegment segment = chunk.toSegment();
             contextTexts.add(formatContext(segment));
             sources.add(new RagSource(
                     getFileName(segment.metadata()),
@@ -272,14 +246,14 @@ public class RagService {
     private List<RetrievedChunk> rerankOrBoost(String question, List<RetrievedChunk> candidates, int limit) {
         if (rerankEnabled && rerankService.isConfigured()) {
             List<String> texts = candidates.stream()
-                    .map(chunk -> chunk.segment().text())
+                    .map(RetrievedChunk::text)
                     .toList();
             List<RerankResult> reranked = rerankService.rerank(question, texts, limit);
             List<RetrievedChunk> result = new ArrayList<>();
             for (RerankResult rerank : reranked) {
                 if (rerank.originalIndex() >= 0 && rerank.originalIndex() < candidates.size()) {
                     RetrievedChunk original = candidates.get(rerank.originalIndex());
-                    result.add(new RetrievedChunk(original.segment(), rerank.score()));
+                    result.add(new RetrievedChunk(original.text(), original.metadata(), rerank.score()));
                 }
             }
             if (!result.isEmpty()) {
@@ -301,8 +275,8 @@ public class RagService {
         }
 
         List<RetrievedChunk> selected = candidates.stream()
-                .map(chunk -> new RetrievedChunk(chunk.segment(),
-                        chunk.score() + keywordBoost(chunk.segment().text(), queryTerms)))
+                .map(chunk -> new RetrievedChunk(chunk.text(), chunk.metadata(),
+                        chunk.score() + keywordBoost(chunk.text(), queryTerms)))
                 .sorted((a, b) -> Double.compare(b.score(), a.score()))
                 .limit(limit)
                 .toList();
@@ -398,5 +372,4 @@ public class RagService {
      */
     private record RetrievalContext(List<String> contextTexts, List<RagSource> sources) {}
 
-    private record RetrievedChunk(TextSegment segment, double score) {}
 }

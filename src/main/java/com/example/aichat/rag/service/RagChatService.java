@@ -14,7 +14,6 @@ import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.StreamingResponseHandler;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.output.Response;
-import dev.langchain4j.store.embedding.EmbeddingMatch;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -33,8 +32,7 @@ public class RagChatService {
 
     private static final Logger log = LoggerFactory.getLogger(RagChatService.class);
 
-    private final VectorStoreService vectorStoreService;
-    private final HybridRetrievalService hybridRetrievalService;
+    private final RagRetrievalRouter retrievalRouter;
     private final RerankService rerankService;
     private final ChatModelFactory modelFactory;
     private final RagChatSessionRepository sessionRepo;
@@ -136,16 +134,14 @@ public class RagChatService {
             %s
             """;
 
-    public RagChatService(VectorStoreService vectorStoreService,
-                          HybridRetrievalService hybridRetrievalService,
+    public RagChatService(RagRetrievalRouter retrievalRouter,
                           RerankService rerankService,
                           ChatModelFactory modelFactory,
                           RagChatSessionRepository sessionRepo,
                           RagChatMessageRepository messageRepo,
                           KnowledgeDocumentRepository documentRepo,
                           LongTermMemoryService memoryService) {
-        this.vectorStoreService = vectorStoreService;
-        this.hybridRetrievalService = hybridRetrievalService;
+        this.retrievalRouter = retrievalRouter;
         this.rerankService = rerankService;
         this.modelFactory = modelFactory;
         this.sessionRepo = sessionRepo;
@@ -327,28 +323,14 @@ public class RagChatService {
         long retrievalStart = System.currentTimeMillis();
         int debugTopK = maxResults * 4;
         List<RagDebugResponse.DebugMatch> debugMatches = new ArrayList<>();
-
-        if (hybridEnabled) {
-            List<HybridMatch> matches = hybridRetrievalService.hybridSearch(rewritten, debugTopK, kbId);
-            for (int i = 0; i < matches.size(); i++) {
-                HybridMatch m = matches.get(i);
-                debugMatches.add(new RagDebugResponse.DebugMatch(
-                        i + 1, getFileName(m.getMetadata()), m.getText(),
-                        m.getVectorScore(), m.getBm25Score(), m.totalScore(),
-                        -1, metadataToMap(m.getMetadata())
-                ));
-            }
-        } else {
-            List<EmbeddingMatch<TextSegment>> matches =
-                    vectorStoreService.searchByKb(rewritten, debugTopK, 0.0, kbId);
-            for (int i = 0; i < matches.size(); i++) {
-                var m = matches.get(i);
-                debugMatches.add(new RagDebugResponse.DebugMatch(
-                        i + 1, getFileName(m.embedded().metadata()), m.embedded().text(),
-                        m.score(), 0, m.score(),
-                        -1, metadataToMap(m.embedded().metadata())
-                ));
-            }
+        List<RetrievedChunk> matches = retrievalRouter.retrieveByKnowledgeBase(rewritten, kbId, debugTopK);
+        for (int i = 0; i < matches.size(); i++) {
+            RetrievedChunk match = matches.get(i);
+            debugMatches.add(new RagDebugResponse.DebugMatch(
+                    i + 1, getFileName(match.metadata()), match.text(),
+                    match.score(), 0, match.score(),
+                    -1, metadataToMap(match.metadata())
+            ));
         }
         long retrievalMs = System.currentTimeMillis() - retrievalStart;
 
@@ -546,7 +528,7 @@ public class RagChatService {
         List<RetrievedChunk> selected = rerankOrBoost(query, candidates, maxResults);
 
         for (RetrievedChunk chunk : selected) {
-            TextSegment seg = chunk.segment();
+            TextSegment seg = chunk.toSegment();
             contextTexts.add(formatContext(seg));
             sources.add(new RagSource(
                     getFileName(seg.metadata()),
@@ -558,20 +540,7 @@ public class RagChatService {
     }
 
     private List<RetrievedChunk> retrieveCandidatesByKb(String query, Long kbId, int candidateCount) {
-        if (hybridEnabled) {
-            List<HybridMatch> matches = hybridRetrievalService.hybridSearchByKb(query, candidateCount, kbId);
-            return matches.stream()
-                    .map(match -> new RetrievedChunk(
-                            TextSegment.from(match.getText(), match.getMetadata()),
-                            match.totalScore()))
-                    .toList();
-        }
-
-        List<EmbeddingMatch<TextSegment>> matches =
-                vectorStoreService.searchByKb(query, candidateCount, minScore, kbId);
-        return matches.stream()
-                .map(match -> new RetrievedChunk(match.embedded(), match.score()))
-                .toList();
+        return retrievalRouter.retrieveByKnowledgeBase(query, kbId, candidateCount);
     }
 
     private List<RetrievedChunk> rerankOrBoost(String query, List<RetrievedChunk> candidates, int limit) {
@@ -581,14 +550,14 @@ public class RagChatService {
 
         if (rerankEnabled && rerankService.isConfigured()) {
             List<String> texts = candidates.stream()
-                    .map(chunk -> chunk.segment().text())
+                    .map(RetrievedChunk::text)
                     .toList();
             List<RerankResult> reranked = rerankService.rerank(query, texts, limit);
             List<RetrievedChunk> result = new ArrayList<>();
             for (RerankResult rerank : reranked) {
                 if (rerank.originalIndex() >= 0 && rerank.originalIndex() < candidates.size()) {
                     RetrievedChunk original = candidates.get(rerank.originalIndex());
-                    result.add(new RetrievedChunk(original.segment(), rerank.score()));
+                    result.add(new RetrievedChunk(original.text(), original.metadata(), rerank.score()));
                 }
             }
             if (!result.isEmpty()) {
@@ -612,8 +581,8 @@ public class RagChatService {
         }
 
         List<RetrievedChunk> selected = candidates.stream()
-                .map(chunk -> new RetrievedChunk(chunk.segment(),
-                        chunk.score() + keywordBoost(chunk.segment().text(), queryTerms)))
+                .map(chunk -> new RetrievedChunk(chunk.text(), chunk.metadata(),
+                        chunk.score() + keywordBoost(chunk.text(), queryTerms)))
                 .sorted((a, b) -> Double.compare(b.score(), a.score()))
                 .limit(limit)
                 .toList();
@@ -759,6 +728,4 @@ public class RagChatService {
         if (metadata.getString("page_count") != null) map.put("page_count", metadata.getString("page_count"));
         return map;
     }
-
-    private record RetrievedChunk(TextSegment segment, double score) {}
 }

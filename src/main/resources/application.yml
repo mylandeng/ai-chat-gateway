@@ -107,8 +107,22 @@ rag:
     history-rounds: 5          # 多轮对话历史保留轮数
     rewrite-enabled: true      # 是否启用 query 改写
   retrieval:
+    provider: ${RAG_RETRIEVAL_PROVIDER:local} # local | bailian
     max-results: 8
     min-score: 0.55
+  bailian:
+    access-key-id: ${ALIBABA_CLOUD_ACCESS_KEY_ID:}
+    access-key-secret: ${ALIBABA_CLOUD_ACCESS_KEY_SECRET:}
+    endpoint: ${RAG_BAILIAN_ENDPOINT:bailian.cn-beijing.aliyuncs.com}
+    workspace-id: ${RAG_BAILIAN_WORKSPACE_ID:${WORKSPACE_ID:}}
+    index-id: ${RAG_BAILIAN_INDEX_ID:}
+    dense-top-k: ${RAG_BAILIAN_DENSE_TOP_K:30}
+    sparse-top-k: ${RAG_BAILIAN_SPARSE_TOP_K:30}
+    enable-reranking: ${RAG_BAILIAN_ENABLE_RERANKING:true}
+    enable-rewrite: ${RAG_BAILIAN_ENABLE_REWRITE:false}
+    rerank-top-n: ${RAG_BAILIAN_RERANK_TOP_N:8}
+    rerank-min-score: ${RAG_BAILIAN_RERANK_MIN_SCORE:0.2}
+    rerank-model: ${RAG_BAILIAN_RERANK_MODEL:qwen3-rerank-hybrid}
   document:
     upload-dir: ./uploads
     max-file-size: 50MB
