@@ -80,6 +80,7 @@ public class DocumentParseService {
         List<Document> documents = new ArrayList<>();
         try (PDDocument pdf = Loader.loadPDF(filePath.toFile())) {
             PDFTextStripper stripper = new PDFTextStripper();
+            stripper.setSortByPosition(true);
             int pageCount = pdf.getNumberOfPages();
             for (int page = 1; page <= pageCount; page++) {
                 stripper.setStartPage(page);

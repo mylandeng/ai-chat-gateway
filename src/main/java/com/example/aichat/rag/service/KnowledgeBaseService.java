@@ -20,13 +20,16 @@ public class KnowledgeBaseService {
     private final KnowledgeBaseRepository kbRepo;
     private final KnowledgeDocumentRepository docRepo;
     private final RagChatSessionRepository sessionRepo;
+    private final VectorStoreService vectorStoreService;
 
     public KnowledgeBaseService(KnowledgeBaseRepository kbRepo,
                                 KnowledgeDocumentRepository docRepo,
-                                RagChatSessionRepository sessionRepo) {
+                                RagChatSessionRepository sessionRepo,
+                                VectorStoreService vectorStoreService) {
         this.kbRepo = kbRepo;
         this.docRepo = docRepo;
         this.sessionRepo = sessionRepo;
+        this.vectorStoreService = vectorStoreService;
     }
 
     public KnowledgeBase create(Long tenantId, String name, String description) {
@@ -62,6 +65,7 @@ public class KnowledgeBaseService {
     @Transactional
     public void delete(Long id, Long tenantId) {
         KnowledgeBase kb = getByIdAndTenant(id, tenantId);
+        vectorStoreService.removeByKnowledgeBaseId(id);
         sessionRepo.deleteByKbId(id);
         docRepo.deleteByKbId(id);
         kbRepo.delete(kb);
@@ -79,6 +83,7 @@ public class KnowledgeBaseService {
         if (!docRepo.existsByIdAndKbId(docId, kbId)) {
             throw new RuntimeException("文档不存在");
         }
+        vectorStoreService.removeByDocumentId(docId);
         docRepo.deleteById(docId);
         refreshDocCount(kbId);
     }

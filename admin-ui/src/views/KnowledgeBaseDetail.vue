@@ -50,8 +50,18 @@
               <span class="nx-mono" style="font-size: 12px; color: var(--nx-text-muted)">{{ formatTime(row.createdAt) }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="80">
+          <el-table-column label="操作" width="150">
             <template #default="{ row }">
+              <el-button
+                type="primary"
+                link
+                size="small"
+                :loading="isReindexing(row.id)"
+                :disabled="row.status === 0 || row.status === 1"
+                @click="handleReindexDoc(row)"
+              >
+                重建索引
+              </el-button>
               <el-popconfirm title="确定删除？" @confirm="handleDeleteDoc(row.id)">
                 <template #reference>
                   <el-button type="danger" link size="small">删除</el-button>
@@ -126,7 +136,16 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { getKb, updateKb, listKbDocuments, uploadKbDocument, deleteKbDocument, toggleShare, importGitHubRepo } from '@/api/rag'
+import {
+  getKb,
+  updateKb,
+  listKbDocuments,
+  uploadKbDocument,
+  deleteKbDocument,
+  reindexKbDocument,
+  toggleShare,
+  importGitHubRepo
+} from '@/api/rag'
 
 const route = useRoute()
 const router = useRouter()
@@ -139,6 +158,7 @@ const activeTab = ref('docs')
 const documents = ref([])
 const loadingDocs = ref(false)
 const uploading = ref(false)
+const reindexingDocIds = ref(new Set())
 const shareEnabled = ref(false)
 const shareUrl = ref('')
 const editForm = ref({ name: '', description: '' })
@@ -191,6 +211,27 @@ async function handleDeleteDoc(docId) {
     loadDocs()
     loadKb()
   } catch (e) {}
+}
+
+function isReindexing(docId) {
+  return reindexingDocIds.value.has(docId)
+}
+
+async function handleReindexDoc(row) {
+  const next = new Set(reindexingDocIds.value)
+  next.add(row.id)
+  reindexingDocIds.value = next
+  try {
+    await reindexKbDocument(kbId.value, row.id)
+    ElMessage.success('已开始重建索引')
+    pollDocuments()
+  } catch (e) {
+    ElMessage.error(e?.response?.data?.message || '重建索引失败')
+  } finally {
+    const done = new Set(reindexingDocIds.value)
+    done.delete(row.id)
+    reindexingDocIds.value = done
+  }
 }
 
 async function handleGitHubImport() {

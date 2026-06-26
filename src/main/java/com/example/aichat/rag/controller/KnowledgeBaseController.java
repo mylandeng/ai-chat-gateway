@@ -121,6 +121,19 @@ public class KnowledgeBaseController {
         return Map.of("status", "deleted");
     }
 
+    @PostMapping("/{kbId}/documents/{docId}/reindex")
+    public Map<String, String> reindexDocument(@PathVariable Long kbId, @PathVariable Long docId) {
+        Long tenantId = RequestContext.get("tenantId");
+        kbService.getByIdAndTenant(kbId, tenantId);
+        KnowledgeDocument doc = docRepo.findByIdAndKbId(docId, kbId)
+                .orElseThrow(() -> new RuntimeException("文档不存在"));
+        if (doc.getFilePath() == null || doc.getFilePath().isBlank()) {
+            throw new IllegalArgumentException("该文档没有可重建的本地文件路径");
+        }
+        indexingPipeline.reindexAsync(docId);
+        return Map.of("status", "reindexing");
+    }
+
     // ========== 多轮 RAG 问答 ==========
 
     @PostMapping("/{kbId}/chat")

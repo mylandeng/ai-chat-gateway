@@ -62,6 +62,21 @@ public class RagChatService {
     @Value("${rag.rerank.enabled:false}")
     private boolean rerankEnabled;
 
+    @Value("${rag.local-rerank.enabled:true}")
+    private boolean localRerankEnabled;
+
+    @Value("${rag.local-rerank.keyword-boost:0.08}")
+    private double localKeywordBoost;
+
+    @Value("${rag.local-rerank.normal-boost:0.03}")
+    private double localNormalBoost;
+
+    @Value("${rag.local-rerank.max-boost:0.5}")
+    private double localMaxBoost;
+
+    @Value("${rag.local-rerank.keywords:pmic,ldo,dcdc,dc-dc,buck,boost,电压,电流,输出,路,通道,引脚,接口,寄存器,电源,规格,最大,最小}")
+    private String localRerankKeywords;
+
     @Value("${rag.hybrid.vector-weight:0.7}")
     private double vectorWeight;
 
@@ -100,12 +115,14 @@ public class RagChatService {
             改写后的查询：""";
 
     private static final String RAG_SYSTEM_PROMPT = """
-            你是一个企业知识库助手。请根据以下参考资料和对话历史回答用户的问题。
+            你是一个企业知识库助手，擅长从产品手册、规格书、参数表和售后资料中提取准确事实。
 
             规则：
             - 只基于参考资料回答，不要编造信息
             - 如果参考资料不足以回答，请如实说明"根据现有资料无法回答该问题"
-            - 回答时尽量引用原文中的关键信息
+            - 涉及数量、路数、电压、电流、型号、接口、寄存器、引脚等参数时，优先依据表格、参数行和直接描述
+            - 如果只检索到部分类型（例如只找到 LDO，没有找到 DCDC），必须明确说明缺失项，不要推断
+            - 回答时引用关键证据，并尽量标出来源编号；来源中如有页码，也要在回答中体现
             - 注意上下文语境，理解用户追问的意图
             - 使用简洁清晰的语言
 
@@ -524,19 +541,146 @@ public class RagChatService {
 
     private void retrieveByKb(String query, Long kbId,
                                List<String> contextTexts, List<RagSource> sources) {
-        List<EmbeddingMatch<TextSegment>> matches =
-                vectorStoreService.searchByKb(query, maxResults, minScore, kbId);
+        int candidateCount = Math.max(maxResults * 4, 20);
+        List<RetrievedChunk> candidates = retrieveCandidatesByKb(query, kbId, candidateCount);
+        List<RetrievedChunk> selected = rerankOrBoost(query, candidates, maxResults);
 
-        for (EmbeddingMatch<TextSegment> match : matches) {
-            TextSegment seg = match.embedded();
-            contextTexts.add(seg.text());
+        for (RetrievedChunk chunk : selected) {
+            TextSegment seg = chunk.segment();
+            contextTexts.add(formatContext(seg));
             sources.add(new RagSource(
                     getFileName(seg.metadata()),
                     getPage(seg.metadata()),
-                    Math.round(match.score() * 100) / 100.0,
+                    Math.round(chunk.score() * 100) / 100.0,
                     seg.text().substring(0, Math.min(100, seg.text().length())) + "..."
             ));
         }
+    }
+
+    private List<RetrievedChunk> retrieveCandidatesByKb(String query, Long kbId, int candidateCount) {
+        if (hybridEnabled) {
+            List<HybridMatch> matches = hybridRetrievalService.hybridSearchByKb(query, candidateCount, kbId);
+            return matches.stream()
+                    .map(match -> new RetrievedChunk(
+                            TextSegment.from(match.getText(), match.getMetadata()),
+                            match.totalScore()))
+                    .toList();
+        }
+
+        List<EmbeddingMatch<TextSegment>> matches =
+                vectorStoreService.searchByKb(query, candidateCount, minScore, kbId);
+        return matches.stream()
+                .map(match -> new RetrievedChunk(match.embedded(), match.score()))
+                .toList();
+    }
+
+    private List<RetrievedChunk> rerankOrBoost(String query, List<RetrievedChunk> candidates, int limit) {
+        if (candidates.isEmpty()) {
+            return List.of();
+        }
+
+        if (rerankEnabled && rerankService.isConfigured()) {
+            List<String> texts = candidates.stream()
+                    .map(chunk -> chunk.segment().text())
+                    .toList();
+            List<RerankResult> reranked = rerankService.rerank(query, texts, limit);
+            List<RetrievedChunk> result = new ArrayList<>();
+            for (RerankResult rerank : reranked) {
+                if (rerank.originalIndex() >= 0 && rerank.originalIndex() < candidates.size()) {
+                    RetrievedChunk original = candidates.get(rerank.originalIndex());
+                    result.add(new RetrievedChunk(original.segment(), rerank.score()));
+                }
+            }
+            if (!result.isEmpty()) {
+                log.info("[RAG Chat] Rerank完成: candidates={}, selected={}", candidates.size(), result.size());
+                return result.stream().limit(limit).toList();
+            }
+            log.info("[RAG Chat] Rerank无有效结果，使用关键词加权兜底");
+        } else if (rerankEnabled) {
+            log.info("[RAG Chat] Rerank未配置可用服务，使用关键词加权兜底");
+        }
+
+        if (!localRerankEnabled) {
+            log.info("[RAG Chat] 本地关键词重排未启用，使用检索原顺序: candidates={}, selected={}", candidates.size(), limit);
+            return candidates.stream().limit(limit).toList();
+        }
+
+        List<String> queryTerms = extractImportantTerms(query);
+        if (queryTerms.isEmpty()) {
+            log.info("[RAG Chat] 本地关键词重排无有效查询词，使用检索原顺序: candidates={}, selected={}", candidates.size(), limit);
+            return candidates.stream().limit(limit).toList();
+        }
+
+        List<RetrievedChunk> selected = candidates.stream()
+                .map(chunk -> new RetrievedChunk(chunk.segment(),
+                        chunk.score() + keywordBoost(chunk.segment().text(), queryTerms)))
+                .sorted((a, b) -> Double.compare(b.score(), a.score()))
+                .limit(limit)
+                .toList();
+        log.info("[RAG Chat] 使用本地关键词重排: terms={}, candidates={}, selected={}",
+                queryTerms, candidates.size(), selected.size());
+        return selected;
+    }
+
+    private List<String> extractImportantTerms(String query) {
+        if (query == null || query.isBlank()) {
+            return List.of();
+        }
+
+        String normalized = query.toLowerCase(Locale.ROOT);
+        List<String> terms = new ArrayList<>();
+        for (String term : configuredSpecKeywords()) {
+            if (normalized.contains(term.toLowerCase(Locale.ROOT))) {
+                terms.add(term.toLowerCase(Locale.ROOT));
+            }
+        }
+        for (String token : normalized.split("[\\s,，。；;:：?？!！()（）\\[\\]【】]+")) {
+            if (token.length() >= 2 && token.length() <= 32) {
+                terms.add(token);
+            }
+        }
+        return terms.stream().distinct().toList();
+    }
+
+    private double keywordBoost(String text, List<String> queryTerms) {
+        if (text == null || queryTerms.isEmpty()) {
+            return 0;
+        }
+
+        String normalized = text.toLowerCase(Locale.ROOT);
+        double boost = 0;
+        for (String term : queryTerms) {
+            if (normalized.contains(term)) {
+                boost += isSpecKeyword(term) ? localKeywordBoost : localNormalBoost;
+            }
+        }
+        return Math.min(boost, localMaxBoost);
+    }
+
+    private boolean isSpecKeyword(String term) {
+        return configuredSpecKeywords().contains(term);
+    }
+
+    private List<String> configuredSpecKeywords() {
+        if (localRerankKeywords == null || localRerankKeywords.isBlank()) {
+            return List.of();
+        }
+        return Arrays.stream(localRerankKeywords.split(","))
+                .map(String::trim)
+                .filter(item -> !item.isBlank())
+                .map(item -> item.toLowerCase(Locale.ROOT))
+                .distinct()
+                .toList();
+    }
+
+    private String formatContext(TextSegment segment) {
+        StringBuilder header = new StringBuilder();
+        header.append("来源文件: ").append(getFileName(segment.metadata()));
+        Integer page = getPage(segment.metadata());
+        if (page != null) {
+            header.append("，第 ").append(page).append(" 页");
+        }
+        return header + "\n正文:\n" + segment.text();
     }
 
     private void saveMessage(Long sessionId, String role, String content,
@@ -615,4 +759,6 @@ public class RagChatService {
         if (metadata.getString("page_count") != null) map.put("page_count", metadata.getString("page_count"));
         return map;
     }
+
+    private record RetrievedChunk(TextSegment segment, double score) {}
 }

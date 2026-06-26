@@ -124,4 +124,22 @@ public class VectorStoreService {
         embeddingStore.removeAll(new ArrayList<>(ids));
         log.info("[向量存储] 已删除 {} 个向量", ids.size());
     }
+
+    /**
+     * 按文档 ID 删除向量。用于文档重建索引和删除清理。
+     */
+    public void removeByDocumentId(Long docId) {
+        if (docId == null) return;
+        embeddingStore.removeAll(new MetadataFilterBuilder("doc_id").isEqualTo(String.valueOf(docId)));
+        log.info("[向量存储] 已按 doc_id={} 删除向量", docId);
+    }
+
+    /**
+     * 按知识库 ID 删除向量。用于删除知识库时清理 PgVector 残留。
+     */
+    public void removeByKnowledgeBaseId(Long kbId) {
+        if (kbId == null) return;
+        embeddingStore.removeAll(new MetadataFilterBuilder("kb_id").isEqualTo(String.valueOf(kbId)));
+        log.info("[向量存储] 已按 kb_id={} 删除向量", kbId);
+    }
 }

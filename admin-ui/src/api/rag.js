@@ -49,6 +49,9 @@ export const listKbDocuments = (kbId) => api.get(`/rag/kb/${kbId}/documents`)
 export const deleteKbDocument = (kbId, docId) =>
   api.delete(`/rag/kb/${kbId}/documents/${docId}`)
 
+export const reindexKbDocument = (kbId, docId) =>
+  api.post(`/rag/kb/${kbId}/documents/${docId}/reindex`)
+
 export const importGitHubRepo = (kbId, url) =>
   api.post(`/rag/kb/${kbId}/documents/import-github`, { url })
 

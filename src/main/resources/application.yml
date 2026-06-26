@@ -85,8 +85,8 @@ rag:
     dimension: 1024
 
   chunk:
-    size: 500
-    overlap: 50
+    size: 900
+    overlap: 150
   hybrid:
     enabled: true          # 是否启用混合检索（向量+BM25）
     vector-weight: 0.7      # 向量检索权重
@@ -97,12 +97,18 @@ rag:
     api-key: ${RERANK_API_KEY:}
     base-url: ${RERANK_BASE_URL:https://api.cohere.ai}
     model: ${RERANK_MODEL:rerank-english-v2.0}
+  local-rerank:
+    enabled: true            # 外部 rerank 不可用或未配置时，使用本地关键词加权重排
+    keyword-boost: 0.08      # 命中规格关键词时的加分
+    normal-boost: 0.03       # 命中普通查询词时的加分
+    max-boost: 0.5           # 单个片段最高加分
+    keywords: pmic,ldo,dcdc,dc-dc,buck,boost,电压,电流,输出,路,通道,引脚,接口,寄存器,电源,规格,最大,最小
   chat:
     history-rounds: 5          # 多轮对话历史保留轮数
     rewrite-enabled: true      # 是否启用 query 改写
   retrieval:
-    max-results: 5
-    min-score: 0.75
+    max-results: 8
+    min-score: 0.55
   document:
     upload-dir: ./uploads
     max-file-size: 50MB

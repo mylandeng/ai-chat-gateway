@@ -86,12 +86,34 @@ public class IndexingPipeline {
      */
     @Async
     public void processAsync(Long docId, String filePath) {
+        processDocument(docId, filePath, false);
+    }
+
+    /**
+     * 重建索引：先清理该文档旧向量，再按当前解析/切片配置重新入库。
+     */
+    @Async
+    public void reindexAsync(Long docId) {
         KnowledgeDocument doc = documentRepo.findById(docId).orElse(null);
         if (doc == null) return;
+        processDocument(docId, doc.getFilePath(), true);
+    }
 
+    private void processDocument(Long docId, String filePath, boolean cleanupExisting) {
+        KnowledgeDocument doc = documentRepo.findById(docId).orElse(null);
+        if (doc == null) return;
         List<String> storedEmbeddingIds = List.of();
         try {
             log.info("[Indexing] 开始处理文档: id={}, name={}", docId, doc.getFileName());
+            doc.setStatus(0);
+            doc.setErrorMessage(null);
+            doc.setCharCount(0);
+            doc.setChunkCount(0);
+            documentRepo.save(doc);
+
+            if (cleanupExisting) {
+                vectorStoreService.removeByDocumentId(docId);
+            }
 
             // Step 1: 构造基础 metadata（PDF 会按页继承并补充 page）
             Map<String, String> metadata = new java.util.HashMap<>(Map.of(
