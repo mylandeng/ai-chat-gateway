@@ -166,13 +166,14 @@ public class RagChatService {
 
         // 3. Query 改写
         String rewrittenQuery = rewriteQuery(question, history, modelId);
+        String retrievalQuery = buildRetrievalQuery(rewrittenQuery, question);
         String userId = memoryService.resolveUserId(tenantId, RequestContext.get("keyId"));
         String memoryPrompt = memoryOrFallback(memoryService.buildMemoryPrompt(userId, question));
 
         // 4. 检索
         List<String> contextTexts = new ArrayList<>();
         List<RagSource> sources = new ArrayList<>();
-        retrieveByKb(rewrittenQuery, kbId, contextTexts, sources);
+        retrieveByKb(retrievalQuery, kbId, contextTexts, sources);
 
         if (contextTexts.isEmpty()) {
             saveMessage(session.getId(), "user", question, rewrittenQuery, null);
@@ -225,12 +226,13 @@ public class RagChatService {
                 RagChatSession session = getOrCreateSession(kbId, sessionId, tenantId);
                 List<RagChatMessage> history = loadHistory(session.getId());
                 String rewrittenQuery = rewriteQuery(question, history, finalModelId);
+                String retrievalQuery = buildRetrievalQuery(rewrittenQuery, question);
                 String userId = memoryService.resolveUserId(tenantId, keyId);
                 String memoryPrompt = memoryOrFallback(memoryService.buildMemoryPrompt(userId, question));
 
                 List<String> contextTexts = new ArrayList<>();
                 List<RagSource> sources = new ArrayList<>();
-                retrieveByKb(rewrittenQuery, kbId, contextTexts, sources);
+                retrieveByKb(retrievalQuery, kbId, contextTexts, sources);
 
                 if (contextTexts.isEmpty()) {
                     emitter.send(SseEmitter.event().name("session").data(
@@ -498,6 +500,15 @@ public class RagChatService {
             log.warn("[Query改写] 失败，使用原始 query: {}", e.getMessage());
             return question;
         }
+    }
+
+    /**
+     * 构建检索用 query：改写后的独立 query + 原始问题拼接，确保话题不丢失。
+     * 当改写后的查询已包含原始问题核心词时，直接返回改写结果。
+     */
+    private String buildRetrievalQuery(String rewrittenQuery, String originalQuestion) {
+        if (rewrittenQuery.equals(originalQuestion)) return rewrittenQuery;
+        return originalQuestion + "\n" + rewrittenQuery;
     }
 
     private RagChatSession getOrCreateSession(Long kbId, Long sessionId, Long tenantId) {

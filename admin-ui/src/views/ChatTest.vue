@@ -12,6 +12,9 @@
           <el-option label="GPT-4o Mini" value="gpt-4o-mini" />
           <el-option label="Claude Sonnet" value="claude-sonnet" />
         </el-select>
+        <el-select v-model="kbId" size="small" style="width: 150px" clearable placeholder="引用知识库">
+          <el-option v-for="kb in kbList" :key="kb.id" :label="kb.name" :value="kb.id" />
+        </el-select>
         <el-button size="small" @click="clearChat">清空</el-button>
       </div>
     </div>
@@ -54,14 +57,18 @@
 <script setup>
 import { ref, nextTick, onMounted, watch } from 'vue'
 import { renderMarkdown } from '@/utils/markdown'
+import { listKbs } from '@/api/rag'
 
 const CHAT_STORAGE_KEY = 'nx-chat-test-messages'
 const MODEL_STORAGE_KEY = 'nx-chat-test-model'
+const KB_STORAGE_KEY = 'nx-chat-test-kb'
 const MAX_SAVED_MESSAGES = 100
 
 const messages = ref([])
 const inputMsg = ref('')
 const model = ref('deepseek-chat')
+const kbId = ref(null)
+const kbList = ref([])
 const isStreaming = ref(false)
 const messagesRef = ref(null)
 
@@ -86,6 +93,9 @@ function clearChat() {
 function loadChatState() {
   const savedModel = localStorage.getItem(MODEL_STORAGE_KEY)
   if (savedModel) model.value = savedModel
+
+  const savedKb = localStorage.getItem(KB_STORAGE_KEY)
+  if (savedKb) kbId.value = Number(savedKb)
 
   try {
     const savedMessages = JSON.parse(localStorage.getItem(CHAT_STORAGE_KEY) || '[]')
@@ -119,7 +129,7 @@ async function send() {
   const apiKey = localStorage.getItem('apiKey') || ''
 
   try {
-    const url = `/api/chat/stream?message=${encodeURIComponent(userMsg)}&model=${model.value}`
+    const url = `/api/chat/stream?message=${encodeURIComponent(userMsg)}&model=${model.value}${kbId.value ? '&kbId=' + kbId.value : ''}`
     const resp = await fetch(url, {
       headers: { 'Authorization': `Bearer ${apiKey}` }
     })
@@ -162,13 +172,21 @@ async function send() {
   }
 }
 
+async function fetchKbList() {
+  try {
+    kbList.value = await listKbs()
+  } catch (e) { /* ignore */ }
+}
+
 onMounted(() => {
   loadChatState()
+  fetchKbList()
   scrollToBottom()
 })
 
 watch(messages, saveChatState, { deep: true })
 watch(model, value => localStorage.setItem(MODEL_STORAGE_KEY, value))
+watch(kbId, value => localStorage.setItem(KB_STORAGE_KEY, value != null ? String(value) : ''))
 </script>
 
 <style scoped>

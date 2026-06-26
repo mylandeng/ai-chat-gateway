@@ -29,15 +29,33 @@ public class ChatService {
     private final ConversationManager conversationManager;
     private final UsageService usageService;
     private final LongTermMemoryService memoryService;
+    private final KbContextProvider kbContextProvider;
 
     private static final String DEFAULT_MODEL = "deepseek-chat";
+    private static final int KB_MAX_RESULTS = 8;
 
     public ChatService(ChatModelFactory modelFactory, ConversationManager conversationManager,
-                       UsageService usageService, LongTermMemoryService memoryService) {
+                       UsageService usageService, LongTermMemoryService memoryService,
+                       KbContextProvider kbContextProvider) {
         this.modelFactory = modelFactory;
         this.conversationManager = conversationManager;
         this.usageService = usageService;
         this.memoryService = memoryService;
+        this.kbContextProvider = kbContextProvider;
+    }
+
+    /**
+     * 构建知识库上下文 system message（如果 kbId 不为空）
+     */
+    private String buildKbContext(String userMessage, Long kbId, Long tenantId) {
+        if (kbId == null) return "";
+        return kbContextProvider.buildContextByKbId(userMessage, kbId, tenantId, KB_MAX_RESULTS);
+    }
+
+    private SystemMessage buildKbSystemMessage(String kbContext) {
+        if (kbContext.isBlank()) return null;
+        return SystemMessage.from("以下是知识库中的参考资料：\n\n" + kbContext
+                + "\n---\n请基于以上参考资料回答用户问题。如果资料中没有相关信息，请明确说明。");
     }
 
     /**
@@ -55,9 +73,14 @@ public class ChatService {
             ChatLanguageModel model = modelFactory.getModel(modelId);
             String userId = memoryService.resolveUserId(tenantId, keyId);
             String memoryPrompt = memoryService.buildMemoryPrompt(userId, request.message());
+            String kbContext = buildKbContext(request.message(), request.kbId(), tenantId);
             List<dev.langchain4j.data.message.ChatMessage> messages = new ArrayList<>();
             if (!memoryPrompt.isBlank()) {
                 messages.add(SystemMessage.from(memoryPrompt));
+            }
+            SystemMessage kbMsg = buildKbSystemMessage(kbContext);
+            if (kbMsg != null) {
+                messages.add(kbMsg);
             }
             messages.add(UserMessage.from(request.message()));
             Response<AiMessage> response = model.generate(messages);
@@ -83,7 +106,7 @@ public class ChatService {
     /**
      * Day2 - 流式聊天（SSE）
      */
-    public SseEmitter streamChat(String message, String modelId) {
+    public SseEmitter streamChat(String message, String modelId, Long kbId) {
         modelId = modelId != null ? modelId : DEFAULT_MODEL;
         log.info("[流式] 调用模型 modelId={}", modelId);
         long start = System.currentTimeMillis();
@@ -96,9 +119,14 @@ public class ChatService {
         final Long tenantId = RequestContext.get("tenantId");
         final String userId = memoryService.resolveUserId(tenantId, keyId);
         String memoryPrompt = memoryService.buildMemoryPrompt(userId, message);
+        String kbContext = buildKbContext(message, kbId, tenantId);
         List<dev.langchain4j.data.message.ChatMessage> messages = new ArrayList<>();
         if (!memoryPrompt.isBlank()) {
             messages.add(SystemMessage.from(memoryPrompt));
+        }
+        SystemMessage kbMsg = buildKbSystemMessage(kbContext);
+        if (kbMsg != null) {
+            messages.add(kbMsg);
         }
         messages.add(UserMessage.from(message));
 
@@ -180,9 +208,14 @@ public class ChatService {
             ChatLanguageModel model = modelFactory.getModel(modelId);
             String userId = memoryService.resolveUserId(tenantId, keyId);
             String memoryPrompt = memoryService.buildMemoryPrompt(userId, request.message());
+            String kbContext = buildKbContext(request.message(), request.kbId(), tenantId);
             List<dev.langchain4j.data.message.ChatMessage> finalMessages = new ArrayList<>();
             if (!memoryPrompt.isBlank()) {
                 finalMessages.add(SystemMessage.from(memoryPrompt));
+            }
+            SystemMessage kbMsg = buildKbSystemMessage(kbContext);
+            if (kbMsg != null) {
+                finalMessages.add(kbMsg);
             }
             finalMessages.addAll(messages);
             Response<AiMessage> response = model.generate(finalMessages);
