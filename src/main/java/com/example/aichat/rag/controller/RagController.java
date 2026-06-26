@@ -46,7 +46,9 @@ public class RagController {
                 file.getOriginalFilename(), file.getSize() / 1024, tenantId);
 
         KnowledgeDocument doc = indexingPipeline.saveFile(file, tenantId);
-        indexingPipeline.processAsync(doc.getId(), doc.getFilePath());
+        if (!doc.isDuplicate()) {
+            indexingPipeline.processAsync(doc.getId(), doc.getFilePath());
+        }
         return doc;
     }
 

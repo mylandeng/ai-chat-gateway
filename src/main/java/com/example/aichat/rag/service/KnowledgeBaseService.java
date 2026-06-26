@@ -80,12 +80,45 @@ public class KnowledgeBaseService {
 
     @Transactional
     public void deleteDocument(Long kbId, Long docId) {
-        if (!docRepo.existsByIdAndKbId(docId, kbId)) {
-            throw new RuntimeException("文档不存在");
-        }
+        var doc = docRepo.findByIdAndKbId(docId, kbId)
+                .orElseThrow(() -> new RuntimeException("文档不存在"));
+        ensureDeletable(doc.getStatus());
         vectorStoreService.removeByDocumentId(docId);
         docRepo.deleteById(docId);
         refreshDocCount(kbId);
+    }
+
+    @Transactional
+    public int deleteDocuments(Long kbId, List<Long> docIds) {
+        if (docIds == null || docIds.isEmpty()) {
+            return 0;
+        }
+        List<Long> uniqueIds = docIds.stream()
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .toList();
+        if (uniqueIds.isEmpty()) {
+            return 0;
+        }
+
+        var documents = docRepo.findByKbIdAndIdIn(kbId, uniqueIds);
+        for (var doc : documents) {
+            ensureDeletable(doc.getStatus());
+        }
+        for (var doc : documents) {
+            vectorStoreService.removeByDocumentId(doc.getId());
+            docRepo.delete(doc);
+        }
+        refreshDocCount(kbId);
+        log.info("[知识库] 批量删除文档: kbId={}, requested={}, deleted={}",
+                kbId, uniqueIds.size(), documents.size());
+        return documents.size();
+    }
+
+    private void ensureDeletable(Integer status) {
+        if (status != null && (status == 0 || status == 1)) {
+            throw new IllegalStateException("文档正在索引中，完成或失败后再删除");
+        }
     }
 
     private KnowledgeBase syncDocCount(KnowledgeBase kb) {

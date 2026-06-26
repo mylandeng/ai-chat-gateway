@@ -85,8 +85,10 @@ public class KnowledgeBaseController {
         kbService.getByIdAndTenant(kbId, tenantId); // 验证归属
 
         KnowledgeDocument doc = indexingPipeline.saveFile(file, tenantId, kbId);
-        indexingPipeline.processAsync(doc.getId(), doc.getFilePath());
-        kbService.refreshDocCount(kbId);
+        if (!doc.isDuplicate()) {
+            indexingPipeline.processAsync(doc.getId(), doc.getFilePath());
+            kbService.refreshDocCount(kbId);
+        }
         return doc;
     }
 
@@ -119,6 +121,15 @@ public class KnowledgeBaseController {
         kbService.getByIdAndTenant(kbId, tenantId);
         kbService.deleteDocument(kbId, docId);
         return Map.of("status", "deleted");
+    }
+
+    @PostMapping("/{kbId}/documents/batch-delete")
+    public Map<String, Object> batchDeleteDocuments(@PathVariable Long kbId,
+                                                    @RequestBody Map<String, List<Long>> body) {
+        Long tenantId = RequestContext.get("tenantId");
+        kbService.getByIdAndTenant(kbId, tenantId);
+        int deleted = kbService.deleteDocuments(kbId, body.get("docIds"));
+        return Map.of("status", "deleted", "deleted", deleted);
     }
 
     @PostMapping("/{kbId}/documents/{docId}/reindex")

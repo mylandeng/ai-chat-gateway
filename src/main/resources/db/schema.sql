@@ -86,6 +86,7 @@ CREATE TABLE IF NOT EXISTS knowledge_document (
     file_name VARCHAR(255) NOT NULL COMMENT '原始文件名',
     file_path VARCHAR(500) COMMENT '存储路径',
     file_size BIGINT COMMENT '文件大小(bytes)',
+    file_hash VARCHAR(64) COMMENT '文件SHA-256哈希',
     content_type VARCHAR(100) COMMENT 'MIME类型',
     char_count INT DEFAULT 0 COMMENT '提取的字符数',
     chunk_count INT DEFAULT 0 COMMENT '切片数量',
@@ -94,7 +95,8 @@ CREATE TABLE IF NOT EXISTS knowledge_document (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_tenant (tenant_id),
-    INDEX idx_kb (kb_id)
+    INDEX idx_kb (kb_id),
+    INDEX idx_kb_file_hash (tenant_id, kb_id, file_hash)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- W4: 知识库表

@@ -67,6 +67,7 @@ services:
       ALIBABA_CLOUD_ACCESS_KEY_SECRET: ${ALIBABA_CLOUD_ACCESS_KEY_SECRET:-}
       RAG_BAILIAN_WORKSPACE_ID: ${RAG_BAILIAN_WORKSPACE_ID:-}
       RAG_BAILIAN_INDEX_ID: ${RAG_BAILIAN_INDEX_ID:-}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
     depends_on:
       mysql:
         condition: service_healthy

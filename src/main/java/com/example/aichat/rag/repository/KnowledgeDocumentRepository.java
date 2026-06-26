@@ -18,5 +18,13 @@ public interface KnowledgeDocumentRepository extends JpaRepository<KnowledgeDocu
 
     Optional<KnowledgeDocument> findByIdAndKbId(Long id, Long kbId);
 
+    List<KnowledgeDocument> findByKbIdAndIdIn(Long kbId, List<Long> ids);
+
+    Optional<KnowledgeDocument> findFirstByTenantIdAndKbIdAndFileHashOrderByCreatedAtDesc(
+            Long tenantId, Long kbId, String fileHash);
+
+    Optional<KnowledgeDocument> findFirstByTenantIdAndKbIdIsNullAndFileHashOrderByCreatedAtDesc(
+            Long tenantId, String fileHash);
+
     void deleteByKbId(Long kbId);
 }

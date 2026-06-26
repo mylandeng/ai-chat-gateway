@@ -16,15 +16,45 @@
     <el-tabs v-model="activeTab">
       <!-- 文档管理 -->
       <el-tab-pane label="文档管理" name="docs">
-        <div style="margin-bottom: 12px; display: flex; justify-content: flex-end; gap: 8px">
-          <el-button size="small" @click="githubDialogVisible = true">导入 GitHub 仓库</el-button>
-          <el-upload :show-file-list="false" :before-upload="handleUpload"
-                     accept=".pdf,.docx,.xlsx,.txt,.md,.csv" multiple>
-            <el-button type="primary" size="small" :loading="uploading">上传文件</el-button>
-          </el-upload>
+        <div class="nx-doc-toolbar">
+          <div class="nx-doc-batch">
+            <el-popconfirm
+              :title="`确定删除选中的 ${selectedDocs.length} 个文档？`"
+              :disabled="selectedDocs.length === 0"
+              @confirm="handleBatchDeleteDocs"
+            >
+              <template #reference>
+                <el-button
+                  size="small"
+                  type="danger"
+                  plain
+                  :disabled="selectedDocs.length === 0"
+                  :loading="batchDeleting"
+                >
+                  批量删除
+                </el-button>
+              </template>
+            </el-popconfirm>
+            <span class="nx-selected-count" v-if="selectedDocs.length">已选择 {{ selectedDocs.length }} 项</span>
+          </div>
+          <div class="nx-doc-actions">
+            <el-button size="small" @click="githubDialogVisible = true">导入 GitHub 仓库</el-button>
+            <el-upload :show-file-list="false" :before-upload="handleUpload"
+                       accept=".pdf,.docx,.xlsx,.txt,.md,.csv" multiple>
+              <el-button type="primary" size="small" :loading="uploading">上传文件</el-button>
+            </el-upload>
+          </div>
         </div>
 
-        <el-table :data="documents" v-loading="loadingDocs" empty-text="暂无文档" size="small">
+        <el-table
+          ref="docTableRef"
+          :data="documents"
+          v-loading="loadingDocs"
+          empty-text="暂无文档"
+          size="small"
+          @selection-change="handleSelectionChange"
+        >
+          <el-table-column type="selection" width="42" :selectable="isDocSelectable" />
           <el-table-column prop="fileName" label="文件名" min-width="200">
             <template #default="{ row }">
               <span>{{ row.fileName }}</span>
@@ -62,9 +92,9 @@
               >
                 重建索引
               </el-button>
-              <el-popconfirm title="确定删除？" @confirm="handleDeleteDoc(row.id)">
+              <el-popconfirm title="确定删除？" :disabled="!isDocSelectable(row)" @confirm="handleDeleteDoc(row.id)">
                 <template #reference>
-                  <el-button type="danger" link size="small">删除</el-button>
+                  <el-button type="danger" link size="small" :disabled="!isDocSelectable(row)">删除</el-button>
                 </template>
               </el-popconfirm>
             </template>
@@ -142,6 +172,7 @@ import {
   listKbDocuments,
   uploadKbDocument,
   deleteKbDocument,
+  batchDeleteKbDocuments,
   reindexKbDocument,
   toggleShare,
   importGitHubRepo
@@ -158,6 +189,9 @@ const activeTab = ref('docs')
 const documents = ref([])
 const loadingDocs = ref(false)
 const uploading = ref(false)
+const selectedDocs = ref([])
+const batchDeleting = ref(false)
+const docTableRef = ref(null)
 const reindexingDocIds = ref(new Set())
 const shareEnabled = ref(false)
 const shareUrl = ref('')
@@ -187,8 +221,12 @@ async function loadDocs() {
 async function handleUpload(file) {
   uploading.value = true
   try {
-    await uploadKbDocument(kbId.value, file)
-    ElMessage.success('上传成功，正在处理...')
+    const doc = await uploadKbDocument(kbId.value, file)
+    if (doc?.duplicate) {
+      ElMessage.info('文档已存在，已跳过重复索引')
+    } else {
+      ElMessage.success('上传成功，正在处理...')
+    }
     pollDocuments()
   } catch (e) {}
   uploading.value = false
@@ -211,6 +249,29 @@ async function handleDeleteDoc(docId) {
     loadDocs()
     loadKb()
   } catch (e) {}
+}
+
+function handleSelectionChange(rows) {
+  selectedDocs.value = rows
+}
+
+function isDocSelectable(row) {
+  return row.status !== 0 && row.status !== 1
+}
+
+async function handleBatchDeleteDocs() {
+  if (!selectedDocs.value.length) return
+  batchDeleting.value = true
+  try {
+    const docIds = selectedDocs.value.map(doc => doc.id)
+    const res = await batchDeleteKbDocuments(kbId.value, docIds)
+    ElMessage.success(`已删除 ${res?.deleted ?? docIds.length} 个文档`)
+    selectedDocs.value = []
+    docTableRef.value?.clearSelection?.()
+    await loadDocs()
+    await loadKb()
+  } catch (e) {}
+  batchDeleting.value = false
 }
 
 function isReindexing(docId) {
@@ -301,4 +362,22 @@ onMounted(() => { loadKb(); loadDocs() })
 }
 .nx-detail-nav { display: flex; align-items: center; }
 .nx-detail-actions { display: flex; gap: 8px; }
+.nx-doc-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.nx-doc-batch,
+.nx-doc-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.nx-selected-count {
+  color: var(--nx-text-muted);
+  font-family: var(--nx-font-mono);
+  font-size: 12px;
+}
 </style>
