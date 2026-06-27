@@ -15,7 +15,7 @@ RUN --mount=type=cache,target=/root/.m2 mvn dependency:go-offline -B
 
 # 再拷贝源码编译
 COPY src ./src
-RUN --mount=type=cache,target=/root/.m2 mvn clean package -DskipTests -B -o
+RUN --mount=type=cache,target=/root/.m2 mvn clean package -DskipTests -B
 
 # 第二阶段：运行
 FROM eclipse-temurin:17-jre-alpine

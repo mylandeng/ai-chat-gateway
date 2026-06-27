@@ -103,9 +103,6 @@ public class ChatService {
         }
     }
 
-    /**
-     * Day2 - 流式聊天（SSE），支持自定义 baseUrl 和 apiKey
-     */
     public SseEmitter streamChat(String message, String modelId, Long kbId, String baseUrl, String apiKey, String modelName) {
         modelId = modelId != null ? modelId : DEFAULT_MODEL;
         log.info("[流式] 调用模型 modelId={}, kbId={}, 自定义baseUrl={}, 自定义modelName={}", modelId, kbId, baseUrl != null && !baseUrl.isBlank(), modelName);

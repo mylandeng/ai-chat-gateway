@@ -153,11 +153,12 @@ async function send() {
   const apiKey = localStorage.getItem('apiKey') || ''
 
   try {
-    let url = `/api/chat/stream?message=${encodeURIComponent(userMsg)}&model=${model.value}`
-    if (kbId.value) url += `&kbId=${kbId.value}`
-    if (customBaseUrl.value) url += `&baseUrl=${encodeURIComponent(customBaseUrl.value)}`
-    if (customApiKey.value) url += `&apiKey=${encodeURIComponent(customApiKey.value)}`
-    if (customModelName.value) url += `&modelName=${encodeURIComponent(customModelName.value)}`
+    const params = new URLSearchParams({ message: userMsg, model: model.value })
+    if (kbId.value) params.set('kbId', kbId.value)
+    if (customBaseUrl.value) params.set('baseUrl', customBaseUrl.value)
+    if (customApiKey.value) params.set('apiKey', customApiKey.value)
+    if (customModelName.value) params.set('modelName', customModelName.value)
+    const url = `/api/chat/stream?${params.toString()}`
     const resp = await fetch(url, {
       headers: { 'Authorization': `Bearer ${apiKey}` }
     })

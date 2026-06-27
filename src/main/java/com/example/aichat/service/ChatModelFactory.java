@@ -71,29 +71,9 @@ public class ChatModelFactory {
     }
 
     private StreamingChatLanguageModel createStreamingModel(String modelId) {
-        var config = getConfig(modelId);
-        return switch (config.getProvider()) {
-            case OPENAI -> OpenAiStreamingChatModel.builder()
-                .apiKey(config.getApiKey())
-                .baseUrl(config.getBaseUrl())
-                .modelName(config.getModelName())
-                .build();
-            case DASHSCOPE -> QwenStreamingChatModel.builder()
-                .apiKey(config.getApiKey())
-                .modelName(config.getModelName())
-                .build();
-            case CLAUDE -> AnthropicStreamingChatModel.builder()
-                .apiKey(config.getApiKey())
-                .baseUrl(config.getBaseUrl())
-                .modelName(config.getModelName())
-                .maxTokens(config.getMaxTokens())
-                .build();
-        };
+        return createAdHocStreamingModel(modelId, null, null, null);
     }
 
-    /**
-     * 使用自定义 baseUrl、apiKey、modelName 创建临时流式模型（不缓存）
-     */
     public StreamingChatLanguageModel createAdHocStreamingModel(String modelId, String baseUrl, String apiKey, String modelName) {
         var config = getConfig(modelId);
         String effectiveBaseUrl = (baseUrl != null && !baseUrl.isBlank()) ? baseUrl : config.getBaseUrl();
