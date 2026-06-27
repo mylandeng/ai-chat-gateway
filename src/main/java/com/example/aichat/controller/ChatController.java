@@ -61,9 +61,12 @@ public class ChatController {
     public SseEmitter streamChat(
             @RequestParam String message,
             @RequestParam(required = false, defaultValue = "deepseek-chat") String model,
-            @RequestParam(required = false) Long kbId) {
-        log.info("[流式聊天] model={}, message长度={}, kbId={}", model, message != null ? message.length() : 0, kbId);
-        return chatService.streamChat(message, model, kbId);
+            @RequestParam(required = false) Long kbId,
+            @RequestParam(required = false) String baseUrl,
+            @RequestParam(required = false) String apiKey,
+            @RequestParam(required = false) String modelName) {
+        log.info("[流式聊天] model={}, message长度={}, kbId={}, 自定义baseUrl={}, 自定义modelName={}", model, message != null ? message.length() : 0, kbId, baseUrl != null && !baseUrl.isBlank(), modelName);
+        return chatService.streamChat(message, model, kbId, baseUrl, apiKey, modelName);
     }
 
     // === Day3-4: 模型列表 ===

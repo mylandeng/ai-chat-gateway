@@ -36,6 +36,7 @@ services:
   # 应用
   app:
     build: .
+    pull_policy: if_not_present
     container_name: ai-chat-app
     ports:
       - "8080:8080"
@@ -83,6 +84,7 @@ services:
   # Nginx（前端 + 反向代理）
   nginx:
     build: ./admin-ui
+    pull_policy: if_not_present
     container_name: ai-chat-nginx
     ports:
       - "8081:80"

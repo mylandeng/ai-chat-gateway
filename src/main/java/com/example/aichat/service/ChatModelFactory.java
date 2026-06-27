@@ -62,6 +62,7 @@ public class ChatModelFactory {
                 .build();
             case CLAUDE -> AnthropicChatModel.builder()
                 .apiKey(config.getApiKey())
+                .baseUrl(config.getBaseUrl())
                 .modelName(config.getModelName())
                 .maxTokens(config.getMaxTokens())
                 .temperature(config.getTemperature())
@@ -83,7 +84,37 @@ public class ChatModelFactory {
                 .build();
             case CLAUDE -> AnthropicStreamingChatModel.builder()
                 .apiKey(config.getApiKey())
+                .baseUrl(config.getBaseUrl())
                 .modelName(config.getModelName())
+                .maxTokens(config.getMaxTokens())
+                .build();
+        };
+    }
+
+    /**
+     * 使用自定义 baseUrl、apiKey、modelName 创建临时流式模型（不缓存）
+     */
+    public StreamingChatLanguageModel createAdHocStreamingModel(String modelId, String baseUrl, String apiKey, String modelName) {
+        var config = getConfig(modelId);
+        String effectiveBaseUrl = (baseUrl != null && !baseUrl.isBlank()) ? baseUrl : config.getBaseUrl();
+        String effectiveApiKey = (apiKey != null && !apiKey.isBlank()) ? apiKey : config.getApiKey();
+        String effectiveModelName = (modelName != null && !modelName.isBlank()) ? modelName : config.getModelName();
+        log.info("[模型工厂] 创建临时StreamingModel: modelId={}, baseUrl={}, modelName={}", modelId, effectiveBaseUrl, effectiveModelName);
+
+        return switch (config.getProvider()) {
+            case OPENAI -> OpenAiStreamingChatModel.builder()
+                .apiKey(effectiveApiKey)
+                .baseUrl(effectiveBaseUrl)
+                .modelName(effectiveModelName)
+                .build();
+            case DASHSCOPE -> QwenStreamingChatModel.builder()
+                .apiKey(effectiveApiKey)
+                .modelName(effectiveModelName)
+                .build();
+            case CLAUDE -> AnthropicStreamingChatModel.builder()
+                .apiKey(effectiveApiKey)
+                .baseUrl(effectiveBaseUrl)
+                .modelName(effectiveModelName)
                 .maxTokens(config.getMaxTokens())
                 .build();
         };

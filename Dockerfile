@@ -4,15 +4,20 @@
 FROM maven:3.9-eclipse-temurin-17 AS builder
 
 WORKDIR /build
-COPY pom.xml .
 
+# 配置阿里云 Maven 镜像
+RUN mkdir -p ~/.m2 && \
+    echo '<settings><mirrors><mirror><id>aliyun</id><name>Aliyun Maven</name><url>https://maven.aliyun.com/repository/public</url><mirrorOf>central</mirrorOf></mirror></mirrors></settings>' > ~/.m2/settings.xml
+
+# 先拷贝 pom.xml，单独下载依赖（pom 不变时这层被缓存）
+COPY pom.xml .
+RUN --mount=type=cache,target=/root/.m2 mvn dependency:go-offline -B
+
+# 再拷贝源码编译
 COPY src ./src
-RUN --mount=type=cache,target=/root/.m2 mvn clean package -DskipTests -B
+RUN --mount=type=cache,target=/root/.m2 mvn clean package -DskipTests -B -o
 
 # 第二阶段：运行
-FROM eclipse-temurin:17-jre-alpine
-
-# 运行阶段
 FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
 COPY --from=builder /build/target/ai-chat-gateway-1.0.0.jar app.jar

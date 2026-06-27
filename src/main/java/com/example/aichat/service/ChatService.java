@@ -104,14 +104,19 @@ public class ChatService {
     }
 
     /**
-     * Day2 - 流式聊天（SSE）
+     * Day2 - 流式聊天（SSE），支持自定义 baseUrl 和 apiKey
      */
-    public SseEmitter streamChat(String message, String modelId, Long kbId) {
+    public SseEmitter streamChat(String message, String modelId, Long kbId, String baseUrl, String apiKey, String modelName) {
         modelId = modelId != null ? modelId : DEFAULT_MODEL;
-        log.info("[流式] 调用模型 modelId={}", modelId);
+        log.info("[流式] 调用模型 modelId={}, kbId={}, 自定义baseUrl={}, 自定义modelName={}", modelId, kbId, baseUrl != null && !baseUrl.isBlank(), modelName);
         long start = System.currentTimeMillis();
 
-        StreamingChatLanguageModel model = modelFactory.getStreamingModel(modelId);
+        StreamingChatLanguageModel model;
+        if ((baseUrl != null && !baseUrl.isBlank()) || (apiKey != null && !apiKey.isBlank()) || (modelName != null && !modelName.isBlank())) {
+            model = modelFactory.createAdHocStreamingModel(modelId, baseUrl, apiKey, modelName);
+        } else {
+            model = modelFactory.getStreamingModel(modelId);
+        }
         SseEmitter emitter = new SseEmitter(300_000L);
 
         final String finalModelId = modelId;
@@ -168,7 +173,15 @@ public class ChatService {
                 int duration = (int) (System.currentTimeMillis() - start);
                 log.error("[流式] 模型调用失败, modelId={}, token数={}, 耗时={}ms", finalModelId, tokenCount, duration, error);
                 usageService.logCall(keyId, tenantId, finalModelId, 0, 0, duration, "error", error.getMessage());
-                emitter.completeWithError(error);
+                try {
+                    String errMsg = error.getMessage() != null && !error.getMessage().isBlank()
+                        ? error.getMessage() : "模型调用失败，请检查 API Key 和 Base URL 配置";
+                    emitter.send(SseEmitter.event().data(Map.of("error", errMsg)));
+                    emitter.send(SseEmitter.event().data("[DONE]"));
+                    emitter.complete();
+                } catch (IOException e) {
+                    emitter.completeWithError(e);
+                }
             }
         });
 

@@ -15,8 +15,19 @@
         <el-select v-model="kbId" size="small" style="width: 150px" clearable placeholder="引用知识库">
           <el-option v-for="kb in kbList" :key="kb.id" :label="kb.name" :value="kb.id" />
         </el-select>
+        <el-button size="small" @click="showConfig = !showConfig">
+          {{ showConfig ? '收起配置' : '自定义配置' }}
+        </el-button>
         <el-button size="small" @click="clearChat">清空</el-button>
       </div>
+    </div>
+
+    <!-- 自定义配置面板 -->
+    <div v-if="showConfig" class="nx-config-panel">
+      <el-input v-model="customBaseUrl" size="small" placeholder="Base URL（留空使用默认）" clearable style="flex: 2" />
+      <el-input v-model="customApiKey" size="small" placeholder="API Key（留空使用默认）" clearable show-password style="flex: 2" />
+      <el-input v-model="customModelName" size="small" placeholder="模型名称（留空使用默认）" clearable style="flex: 1" />
+      <el-button size="small" type="success" @click="saveConfig">保存</el-button>
     </div>
 
     <!-- 消息日志区 -->
@@ -71,6 +82,19 @@ const kbId = ref(null)
 const kbList = ref([])
 const isStreaming = ref(false)
 const messagesRef = ref(null)
+const showConfig = ref(false)
+const customBaseUrl = ref('')
+const customApiKey = ref('')
+const customModelName = ref('')
+
+function saveConfig() {
+  localStorage.setItem('chatModelConfig', JSON.stringify({
+    baseUrl: customBaseUrl.value,
+    apiKey: customApiKey.value,
+    modelName: customModelName.value
+  }))
+  showConfig.value = false
+}
 
 function normalizeMarkdown(text) {
   if (!text) return ''
@@ -129,7 +153,11 @@ async function send() {
   const apiKey = localStorage.getItem('apiKey') || ''
 
   try {
-    const url = `/api/chat/stream?message=${encodeURIComponent(userMsg)}&model=${model.value}${kbId.value ? '&kbId=' + kbId.value : ''}`
+    let url = `/api/chat/stream?message=${encodeURIComponent(userMsg)}&model=${model.value}`
+    if (kbId.value) url += `&kbId=${kbId.value}`
+    if (customBaseUrl.value) url += `&baseUrl=${encodeURIComponent(customBaseUrl.value)}`
+    if (customApiKey.value) url += `&apiKey=${encodeURIComponent(customApiKey.value)}`
+    if (customModelName.value) url += `&modelName=${encodeURIComponent(customModelName.value)}`
     const resp = await fetch(url, {
       headers: { 'Authorization': `Bearer ${apiKey}` }
     })
@@ -160,7 +188,11 @@ async function send() {
         try {
           const parsed = JSON.parse(data)
           const last = messages.value[messages.value.length - 1]
-          last.content += parsed.content || ''
+          if (parsed.error) {
+            last.content = `[错误] ${parsed.error}`
+          } else {
+            last.content += parsed.content || ''
+          }
           scrollToBottom()
         } catch (e) { /* ignore */ }
       }
@@ -181,6 +213,15 @@ async function fetchKbList() {
 onMounted(() => {
   loadChatState()
   fetchKbList()
+  const saved = localStorage.getItem('chatModelConfig')
+  if (saved) {
+    try {
+      const config = JSON.parse(saved)
+      customBaseUrl.value = config.baseUrl || ''
+      customApiKey.value = config.apiKey || ''
+      customModelName.value = config.modelName || ''
+    } catch (e) { /* ignore */ }
+  }
   scrollToBottom()
 })
 
@@ -239,6 +280,16 @@ watch(kbId, value => localStorage.setItem(KB_STORAGE_KEY, value != null ? String
   font-size: 32px;
   color: var(--nx-accent-amber);
   animation: nx-pulse 2s infinite;
+}
+
+.nx-config-panel {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 16px;
+  background: var(--nx-bg-deep);
+  border: 1px solid var(--nx-border);
+  border-radius: 2px;
 }
 
 .nx-input-bar {
