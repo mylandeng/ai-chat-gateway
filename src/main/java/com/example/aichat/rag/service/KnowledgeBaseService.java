@@ -12,6 +12,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -131,7 +133,7 @@ public class KnowledgeBaseService {
         }
         // 索引超过30分钟没更新，允许强制删除
         if (doc.getUpdatedAt() != null
-                && System.currentTimeMillis() - doc.getUpdatedAt().getTime() > 30 * 60 * 1000L) {
+                && Duration.between(doc.getUpdatedAt(), LocalDateTime.now()).toMinutes() > 30) {
             log.warn("[知识库] 强制删除卡住的文档: id={}, status={}, updatedAt={}", doc.getId(), status, doc.getUpdatedAt());
             return;
         }
