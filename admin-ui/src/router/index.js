@@ -17,6 +17,7 @@ const routes = [
   { path: '/agents', component: () => import('../views/AgentList.vue'), meta: { title: 'Agent 管理' } },
   { path: '/agents/:id/chat', component: () => import('../views/AgentChat.vue'), meta: { title: 'Agent 对话' } },
   { path: '/workflows', component: () => import('../views/AgentWorkflow.vue'), meta: { title: '工作流' } },
+  { path: '/mcp-test', component: () => import('../views/McpTest.vue'), meta: { title: 'MCP 测试' } },
   // W4 分享链接（独立页面，无侧边栏）
   { path: '/share/:token', component: () => import('../views/SharedChat.vue'), meta: { title: '知识库问答', layout: 'blank' } },
 ]
