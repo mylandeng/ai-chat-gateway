@@ -1,12 +1,11 @@
 import api from './index'
-import { getAuthHeaders } from '../utils/auth'
 
 export function listMcpPresets() {
-  return api.get('/mcp/presets').then(r => r.data)
+  return api.get('/mcp/presets')
 }
 
 export function listMcpTools(serverUrl) {
-  return api.post('/mcp/tools', { serverUrl }).then(r => r.data)
+  return api.post('/mcp/tools', { serverUrl })
 }
 
 export function callMcpTool(serverUrl, toolName, arguments_) {

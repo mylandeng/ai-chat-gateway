@@ -64,7 +64,7 @@ services:
       ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-}
       ANTHROPIC_MODEL_NAME: ${ANTHROPIC_MODEL_NAME:-}
       PGVECTOR_USERNAME: ${PGVECTOR_USERNAME:-postgres}
-      PGVECTOR_PASSWORD: ${PGVECTOR_PASSWORD:-}
+      PGVECTOR_PASSWORD: ${PGVECTOR_PASSWORD:-postgres}
       RERANK_API_KEY: ${RERANK_API_KEY:-}
       RERANK_BASE_URL: ${RERANK_BASE_URL:-}
       RERANK_MODEL: ${RERANK_MODEL:-}
@@ -121,7 +121,7 @@ services:
     environment:
       POSTGRES_DB: rag_db
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${PGVECTOR_PASSWORD:-postgres}
     volumes:
       - pgvector_data:/var/lib/postgresql/data
     healthcheck:

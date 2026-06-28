@@ -56,8 +56,31 @@
           <span class="nx-log-rule"></span>
         </div>
         <div class="nx-log-body">
-          <pre v-if="entry.type !== 'system'" class="nx-log-json">{{ entry.content }}</pre>
-          <span v-else>{{ entry.content }}</span>
+          <span v-if="entry.type === 'system'">{{ entry.content }}</span>
+          <template v-else-if="entry.type === 'result' && entry.markdown">
+            <div class="nx-markdown nx-result-markdown" v-html="renderMd(entry.content)"></div>
+            <div v-if="entry.paymentLinks?.length" class="nx-payment-links">
+              <div v-for="link in entry.paymentLinks" :key="link.url" class="nx-payment-card">
+                <div v-if="link.showQr" class="nx-payment-qr">
+                  <QrcodeVue
+                    :value="link.url"
+                    :size="180"
+                    level="L"
+                    render-as="svg"
+                    background="#ffffff"
+                    foreground="#111827"
+                  />
+                </div>
+                <div class="nx-payment-action">
+                  <a :href="link.url" target="_blank" rel="noopener noreferrer">
+                    {{ link.label || '打开支付页面' }}
+                  </a>
+                  <span>手机可直接点击，电脑可使用支付宝扫码</span>
+                </div>
+              </div>
+            </div>
+          </template>
+          <pre v-else class="nx-log-json">{{ entry.content }}</pre>
         </div>
       </div>
     </div>
@@ -65,8 +88,11 @@
 </template>
 
 <script setup>
-import { ref, computed, nextTick, onMounted } from 'vue'
+import { ref, nextTick, onMounted } from 'vue'
+import QrcodeVue from 'qrcode.vue'
 import { listMcpPresets, listMcpTools, callMcpTool } from '@/api/mcp'
+import { renderMarkdown } from '@/utils/markdown'
+import { extractHttpLinks, normalizeMcpResult } from '@/utils/mcpResult'
 
 const serverUrl = ref('')
 const selectedPreset = ref('')
@@ -81,12 +107,14 @@ const logRef = ref(null)
 
 const now = () => new Date().toLocaleTimeString('en-GB', { hour12: false })
 
-function addLog(type, content) {
-  logEntries.value.push({ type, content, time: now() })
+function addLog(type, content, details = {}) {
+  logEntries.value.push({ type, content, time: now(), ...details })
   nextTick(() => {
     if (logRef.value) logRef.value.scrollTop = logRef.value.scrollHeight
   })
 }
+
+const renderMd = text => renderMarkdown(text)
 
 onMounted(async () => {
   try {
@@ -94,7 +122,7 @@ onMounted(async () => {
     if (presets.value.length > 0) {
       selectedPreset.value = presets.value[0].name
       serverUrl.value = presets.value[0].serverUrl
-      activeParams.value = presets.value[0].tools
+      activeParams.value = []
     }
   } catch (e) {
     addLog('error', '加载预置 MCP 服务失败: ' + e.message)
@@ -107,7 +135,7 @@ function onPresetChange(name) {
     serverUrl.value = p.serverUrl
     tools.value = []
     activeTool.value = ''
-    activeParams.value = p.tools || []
+    activeParams.value = []
     addLog('system', '切换预置: ' + p.name + ' (' + p.description + ')')
   }
 }
@@ -126,12 +154,10 @@ async function fetchTools() {
 
 function selectTool(tool) {
   activeTool.value = tool.name
-  // 从预置参数或工具 inputSchema 解析参数
+  // MCP 服务实时返回的 inputSchema 优先，预置仅用于兼容没有 schema 的服务。
   const preset = presets.value.find(p => p.name === selectedPreset.value)
   const presetParams = preset?.tools?.find(t => t.name === tool.name)?.parameters
-  if (presetParams) {
-    activeParams.value = presetParams
-  } else if (tool.inputSchema?.properties) {
+  if (tool.inputSchema?.properties) {
     const required = tool.inputSchema.required || []
     activeParams.value = Object.entries(tool.inputSchema.properties).map(([k, v]) => ({
       name: k,
@@ -139,20 +165,41 @@ function selectTool(tool) {
       description: v.description || '',
       required: required.includes(k)
     }))
+  } else {
+    activeParams.value = presetParams || []
   }
   paramValues.value = {}
 }
 
 async function callTool() {
   if (!activeTool.value) return
-  isCalling.value = true
 
-  // 构建有效的参数对象
-  const args = {}
-  for (const p of activeParams.value) {
-    if (paramValues.value[p.name]) args[p.name] = paramValues.value[p.name]
+  const missingParams = activeParams.value
+    .filter(p => p.required && (paramValues.value[p.name] === '' || paramValues.value[p.name] == null))
+    .map(p => p.name)
+  if (missingParams.length > 0) {
+    addLog('error', '缺少必填参数: ' + missingParams.join(', '))
+    return
   }
 
+  // 构建参数对象（按类型转换）
+  const args = {}
+  for (const p of activeParams.value) {
+    const val = paramValues.value[p.name]
+    if (val === '' || val == null) continue
+    if (p.type === 'number') {
+      const numericValue = Number(val)
+      if (!Number.isFinite(numericValue)) {
+        addLog('error', `${p.name} 必须是有效数字`)
+        return
+      }
+      args[p.name] = numericValue
+    } else {
+      args[p.name] = val
+    }
+  }
+
+  isCalling.value = true
   addLog('system', '调用 ' + activeTool.value + ' → ' + JSON.stringify(args))
 
   try {
@@ -175,7 +222,7 @@ async function callTool() {
           if (parsed.type === 'log') {
             addLog('system', parsed.message)
           } else if (parsed.type === 'result') {
-            addLog('result', JSON.stringify(parsed.data, null, 2))
+            addResultLog(parsed.data)
           } else if (parsed.type === 'error') {
             addLog('error', parsed.message)
           }
@@ -187,6 +234,22 @@ async function callTool() {
   } finally {
     isCalling.value = false
   }
+}
+
+function addResultLog(data) {
+  const result = normalizeMcpResult(data)
+  const shouldCreateQrCode = activeTool.value.startsWith('create-')
+  const paymentLinks = shouldCreateQrCode
+    ? extractHttpLinks(result.content)
+      .filter(link => !link.isImage)
+      .slice(0, 2)
+      .map(link => ({ ...link, showQr: link.url.length <= 1800 }))
+    : []
+
+  addLog('result', result.content, {
+    markdown: result.markdown,
+    paymentLinks
+  })
 }
 
 function clearLog() {
@@ -358,5 +421,55 @@ function clearLog() {
   white-space: pre-wrap;
   word-break: break-all;
   font-size: 11px;
+}
+
+.nx-result-markdown {
+  padding: 10px;
+  background: rgba(0,0,0,.2);
+  border-radius: 2px;
+  word-break: break-word;
+}
+.nx-payment-links {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.nx-payment-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid var(--nx-border);
+  border-radius: 4px;
+}
+.nx-payment-qr {
+  padding: 6px;
+  background: #fff;
+  border-radius: 4px;
+  line-height: 0;
+}
+.nx-payment-action {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 260px;
+}
+.nx-payment-action a {
+  color: var(--nx-signal-blue);
+  font-weight: 600;
+  word-break: break-word;
+}
+.nx-payment-action span {
+  color: var(--nx-text-muted);
+  font-size: 11px;
+}
+
+@media (max-width: 768px) {
+  .nx-payment-card {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }
 </style>
