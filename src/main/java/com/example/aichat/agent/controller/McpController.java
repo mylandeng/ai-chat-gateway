@@ -18,9 +18,6 @@ public class McpController {
 
     private final McpGatewayService mcpGateway;
 
-    // 预置支付宝 MCP 服务地址
-    private static final String ALIPAY_MCP_DEFAULT = "https://bailian.aliyuncs.com/mcp/alipay/sse";
-
     public McpController(McpGatewayService mcpGateway) {
         this.mcpGateway = mcpGateway;
     }
@@ -30,7 +27,7 @@ public class McpController {
      */
     @PostMapping("/tools")
     public Map<String, Object> listTools(@RequestBody Map<String, String> body) {
-        String serverUrl = body.getOrDefault("serverUrl", ALIPAY_MCP_DEFAULT);
+        String serverUrl = body.getOrDefault("serverUrl", mcpGateway.getDefaultServerUrl());
         log.info("[MCP] 获取工具列表: serverUrl={}", serverUrl);
         List<Map<String, Object>> tools = mcpGateway.listTools(serverUrl);
         return Map.of("tools", tools, "serverUrl", serverUrl);
@@ -41,7 +38,7 @@ public class McpController {
      */
     @PostMapping(value = "/tools/call", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter callTool(@RequestBody Map<String, Object> body) {
-        String serverUrl = (String) body.getOrDefault("serverUrl", ALIPAY_MCP_DEFAULT);
+        String serverUrl = (String) body.getOrDefault("serverUrl", mcpGateway.getDefaultServerUrl());
         String toolName = (String) body.get("toolName");
         @SuppressWarnings("unchecked")
         Map<String, Object> arguments = (Map<String, Object>) body.getOrDefault("arguments", Map.of());
@@ -56,21 +53,35 @@ public class McpController {
     @GetMapping("/presets")
     public List<Map<String, Object>> listPresets() {
         return List.of(
-            Map.of("name", "支付宝AI支付", "description", "创建/查询/退款支付宝订单", "serverUrl", ALIPAY_MCP_DEFAULT,
+            Map.of("name", "支付宝AI支付", "description", "创建/查询/退款支付宝订单", "serverUrl", mcpGateway.getDefaultServerUrl(),
                    "tools", List.of(
-                       Map.of("name", "create-alipay-payment", "description", "创建支付宝支付订单",
+                       Map.of("name", "create-mobile-alipay-payment", "description", "创建支付宝手机支付订单",
                               "parameters", List.of(
-                                  Map.of("name", "subject", "type", "string", "required", true, "description", "商品名称"),
-                                  Map.of("name", "amount", "type", "string", "required", true, "description", "支付金额 (元)")
+                                  Map.of("name", "outTradeNo", "type", "string", "required", true, "description", "商户订单号"),
+                                  Map.of("name", "totalAmount", "type", "number", "required", true, "description", "支付金额 (元)"),
+                                  Map.of("name", "orderTitle", "type", "string", "required", true, "description", "订单标题")
+                              )),
+                       Map.of("name", "create-web-page-alipay-payment", "description", "创建支付宝网页支付订单",
+                              "parameters", List.of(
+                                  Map.of("name", "outTradeNo", "type", "string", "required", true, "description", "商户订单号"),
+                                  Map.of("name", "totalAmount", "type", "number", "required", true, "description", "支付金额 (元)"),
+                                  Map.of("name", "orderTitle", "type", "string", "required", true, "description", "订单标题")
                               )),
                        Map.of("name", "query-alipay-payment", "description", "查询支付宝订单状态",
                               "parameters", List.of(
-                                  Map.of("name", "out_trade_no", "type", "string", "required", true, "description", "商户订单号")
+                                  Map.of("name", "outTradeNo", "type", "string", "required", true, "description", "商户订单号")
                               )),
                        Map.of("name", "refund-alipay-payment", "description", "发起支付宝退款",
                               "parameters", List.of(
-                                  Map.of("name", "out_trade_no", "type", "string", "required", true, "description", "商户订单号"),
-                                  Map.of("name", "refund_amount", "type", "string", "required", true, "description", "退款金额 (元)")
+                                  Map.of("name", "outTradeNo", "type", "string", "required", true, "description", "商户订单号"),
+                                  Map.of("name", "refundAmount", "type", "number", "required", true, "description", "退款金额 (元)"),
+                                  Map.of("name", "outRequestNo", "type", "string", "required", true, "description", "退款请求号"),
+                                  Map.of("name", "refundReason", "type", "string", "required", false, "description", "退款原因")
+                              )),
+                       Map.of("name", "query-alipay-refund", "description", "查询支付宝退款状态",
+                              "parameters", List.of(
+                                  Map.of("name", "outRequestNo", "type", "string", "required", true, "description", "退款请求号"),
+                                  Map.of("name", "outTradeNo", "type", "string", "required", true, "description", "商户订单号")
                               ))
                    )
             )

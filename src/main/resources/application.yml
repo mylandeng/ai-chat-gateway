@@ -167,3 +167,22 @@ agent:
       model-id: ${LLM_SUMMARIZE_MODEL:deepseek-chat}
     file-writer:
       output-dir: ${FILE_WRITER_OUTPUT_DIR:./workflow-output}
+alipay:
+  ai-pay:
+    app-private-key: ${ALIPAY_APP_PRIVATE_KEY:}
+    alipay-public-key: ${ALIPAY_PUBLIC_KEY:}
+    app-id: ${ALIPAY_APP_ID:}
+    service-id: ${ALIPAY_SERVICE_ID:}
+    amount: ${ALIPAY_AMOUNT:0.01}
+    pay-before-minutes: ${ALIPAY_PAY_BEFORE_MINUTES:30}
+    sign-type: RSA2
+    charset: UTF-8
+    format: json
+    currency: CNY
+mcp:
+  server:
+    url: ${MCP_SERVER_URL:https://dashscope.aliyuncs.com/api/v1/mcps/alipay-ty/sse}
+  auth:
+    mode: ${MCP_AUTH_MODE:bearer}
+  api:
+    key: ${MCP_API_KEY:${DASHSCOPE_API_KEY:}}
