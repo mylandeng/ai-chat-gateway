@@ -15,6 +15,7 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 @Service
@@ -49,6 +50,7 @@ public class McpGatewayService {
     }
     private final ObjectMapper mapper = new ObjectMapper();
     private final AtomicInteger requestId = new AtomicInteger(1);
+    private final Map<String, List<Map<String, Object>>> toolCache = new ConcurrentHashMap<>();
 
     public String getDefaultServerUrl() {
         return defaultServerUrl;
@@ -73,6 +75,39 @@ public class McpGatewayService {
             log.error("[MCP] 获取工具列表失败: serverUrl={}", serverUrl, e);
             return List.of();
         }
+    }
+
+    /**
+     * 同步调用 MCP 工具（供 Agent 自主决策使用）
+     */
+    public String callToolSync(String serverUrl, String toolName, Map<String, Object> arguments) {
+        try {
+            JsonNode initResp = sseRoundTrip(serverUrl, "initialize", null);
+            if (initResp == null) return "[MCP_ERROR] initialize 失败";
+
+            JsonNode result = sseRoundTrip(serverUrl, "tools/call",
+                    Map.of("name", toolName, "arguments", arguments != null ? arguments : Map.of()));
+            if (result != null) {
+                return mapper.writeValueAsString(result);
+            }
+            return "[MCP_ERROR] 工具调用无结果";
+        } catch (Exception e) {
+            log.error("[MCP] 同步调用失败: toolName={}", toolName, e);
+            return "[MCP_ERROR] " + e.getMessage();
+        }
+    }
+
+    /**
+     * 获取 MCP 工具列表（带缓存）
+     */
+    public List<Map<String, Object>> getToolListCached(String serverUrl) {
+        List<Map<String, Object>> cached = toolCache.get(serverUrl);
+        if (cached != null) return cached;
+        List<Map<String, Object>> result = listTools(serverUrl);
+        if (!result.isEmpty()) {
+            toolCache.put(serverUrl, result);
+        }
+        return result;
     }
 
     public SseEmitter callToolStream(String serverUrl, String toolName, Map<String, Object> arguments) {

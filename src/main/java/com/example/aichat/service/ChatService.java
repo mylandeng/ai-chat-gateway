@@ -141,7 +141,7 @@ public class ChatService {
                 tokenCount++;
                 fullAnswer.append(token);
                 try {
-                    log.info("[流式] 调用模型内容: [{}]", token);
+                    log.debug("[流式] 调用模型内容: [{}]", token);
                     emitter.send(SseEmitter.event()
                         .data(Map.of("content", token)));
                 } catch (IOException e) {
