@@ -154,6 +154,17 @@ public class ToolRegistry {
         throw new RuntimeException("工具 " + toolName + " 没有 @Tool 方法");
     }
 
+    public String executeTool(String toolName, String input, Long knowledgeBaseId) {
+        if ("knowledge_base".equals(toolName)) {
+            if (knowledgeBaseId == null) {
+                throw new IllegalArgumentException("请先配置知识库");
+            }
+            KnowledgeBaseTool tool = (KnowledgeBaseTool) toolInstances.get(toolName);
+            return tool.queryKnowledgeBase(input, knowledgeBaseId);
+        }
+        return executeTool(toolName, input);
+    }
+
     /**
      * 获取工具实例（供工作流引擎使用）
      */

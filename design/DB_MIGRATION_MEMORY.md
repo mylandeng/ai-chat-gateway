@@ -72,3 +72,10 @@ docker exec ai-chat-mysql mysql -uroot -p123 ai_chat -e "ALTER TABLE knowledge_d
 - 原因：代码新增 `KnowledgeDocument.fileHash` 后，当前 MySQL 表缺少 `file_hash` 列。
 - 修复：手动添加 `file_hash` 列和 `idx_kb_file_hash` 索引，并补充启动兼容迁移。
 - 教训：以后任何 Entity 字段变更都必须同步准备已有库迁移方案。
+
+### 2026-06-30 工作流执行文本列
+
+- 现象：工作流执行接口返回 500，MySQL 报 `Invalid JSON text`。
+- 原因：`workflow_execution` 和 `node_execution` 的 `input/output` 被定义为 JSON，实际保存的是用户输入和模型输出文本。
+- 修复：执行 `src/main/resources/db/migrate_workflow_execution_text.sql`，将四个字段迁移为 `LONGTEXT`。
+- 验证：普通中文输入和 Agent 文本输出均可写入，不再要求内容满足 JSON 语法。
