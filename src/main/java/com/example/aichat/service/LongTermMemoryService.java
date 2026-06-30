@@ -11,6 +11,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -45,6 +47,12 @@ public class LongTermMemoryService {
     @Value("${memory.enable-rerank:false}")
     private boolean enableRerank;
 
+    @Value("${memory.profile-schema-ids:}")
+    private String profileSchemaIds;
+
+    @Value("${memory.profile-write-schema-id:}")
+    private String profileWriteSchemaId;
+
     private final RestTemplate restTemplate = new RestTemplate();
 
     public boolean isEnabled() {
@@ -63,11 +71,21 @@ public class LongTermMemoryService {
 
     public String buildMemoryPrompt(String userId, String question) {
         List<String> memories = searchMemories(userId, question);
-        if (memories.isEmpty()) {
+        List<String> profiles = getUserProfiles(userId);
+        if (memories.isEmpty() && profiles.isEmpty()) {
             return "";
         }
 
-        StringBuilder prompt = new StringBuilder("以下是关于当前用户的长期记忆，回答时可作为个性化上下文参考，但不要泄露记忆系统实现：\n");
+        StringBuilder prompt = new StringBuilder("以下是关于当前用户的长期记忆和用户画像，回答时可作为个性化上下文参考，但不要泄露记忆系统实现：\n");
+        if (!profiles.isEmpty()) {
+            prompt.append("用户画像：\n");
+            for (int i = 0; i < profiles.size(); i++) {
+                prompt.append(i + 1).append(". ").append(profiles.get(i)).append('\n');
+            }
+        }
+        if (!memories.isEmpty()) {
+            prompt.append("长期记忆：\n");
+        }
         for (int i = 0; i < memories.size(); i++) {
             prompt.append(i + 1).append(". ").append(memories.get(i)).append('\n');
         }
@@ -124,6 +142,10 @@ public class LongTermMemoryService {
                     Map.of("role", "assistant", "content", assistantMessage != null ? assistantMessage : "")
             ));
             body.put("meta_data", Map.of("source", "ai-chat-gateway"));
+            String schemaId = firstConfiguredProfileSchemaId();
+            if (!schemaId.isBlank()) {
+                body.put("profile_schema", schemaId);
+            }
 
             ResponseEntity<Map> response = restTemplate.postForEntity(
                     apiUrl("/add"), new HttpEntity<>(body, headers()), Map.class);
@@ -133,6 +155,34 @@ public class LongTermMemoryService {
         } catch (Exception e) {
             log.warn("[Memory] 写入失败 userId={}: {}", userId, e.getMessage());
         }
+    }
+
+    public List<String> getUserProfiles(String userId) {
+        if (!isEnabled() || profileSchemaIds == null || profileSchemaIds.isBlank()) {
+            return List.of();
+        }
+
+        List<String> profiles = new ArrayList<>();
+        for (String schemaId : configuredProfileSchemaIds()) {
+            try {
+                String url = apiUrl("/profile_schemas/" + encode(schemaId) + "/user_profile")
+                        + "?user_id=" + encode(userId);
+                if (memoryLibraryId != null && !memoryLibraryId.isBlank()) {
+                    url += "&memory_library_id=" + encode(memoryLibraryId);
+                }
+
+                ResponseEntity<Map> response = restTemplate.exchange(
+                        url, HttpMethod.GET, new HttpEntity<>(headers()), Map.class);
+                String profileText = profileToText(response.getBody());
+                if (!profileText.isBlank()) {
+                    profiles.add(profileText);
+                }
+            } catch (Exception e) {
+                log.warn("[Memory] 用户画像查询失败 userId={}, schemaId={}: {}", userId, schemaId, e.getMessage());
+            }
+        }
+        log.debug("[Memory] 用户画像查询完成 userId={}, 命中={}", userId, profiles.size());
+        return profiles;
     }
 
     public List<Map<String, Object>> listMemories(String userId, int pageNum, int pageSize) {
@@ -191,5 +241,67 @@ public class LongTermMemoryService {
 
     private String limitUserId(String userId) {
         return userId.length() <= 64 ? userId : userId.substring(0, 64);
+    }
+
+    private List<String> configuredProfileSchemaIds() {
+        if (profileSchemaIds == null || profileSchemaIds.isBlank()) {
+            return List.of();
+        }
+        List<String> ids = new ArrayList<>();
+        for (String raw : profileSchemaIds.split(",")) {
+            String id = raw.trim();
+            if (!id.isBlank()) {
+                ids.add(id);
+            }
+        }
+        return ids;
+    }
+
+    private String firstConfiguredProfileSchemaId() {
+        if (profileWriteSchemaId != null && !profileWriteSchemaId.isBlank()) {
+            return profileWriteSchemaId.trim();
+        }
+        List<String> ids = configuredProfileSchemaIds();
+        return ids.isEmpty() ? "" : ids.get(0);
+    }
+
+    @SuppressWarnings("unchecked")
+    private String profileToText(Map body) {
+        if (body == null || !(body.get("profile") instanceof Map<?, ?> profile)) {
+            return "";
+        }
+
+        Object schemaName = profile.get("schema_name");
+        Object attributes = profile.get("attributes");
+        if (!(attributes instanceof List<?> attrList)) {
+            return "";
+        }
+
+        List<String> pairs = new ArrayList<>();
+        for (Object attr : attrList) {
+            if (attr instanceof Map<?, ?> attrMap) {
+                Object name = attrMap.get("name");
+                Object value = attrMap.get("value");
+                if (name instanceof String nameText
+                        && value instanceof String valueText
+                        && !nameText.isBlank()
+                        && !valueText.isBlank()) {
+                    pairs.add(nameText + ": " + valueText);
+                }
+            }
+        }
+
+        if (pairs.isEmpty()) {
+            return "";
+        }
+
+        String prefix = schemaName instanceof String text && !text.isBlank()
+                ? text + " - "
+                : "";
+        return prefix + String.join("; ", pairs);
+    }
+
+    private String encode(String value) {
+        return URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 }

@@ -19,6 +19,8 @@ Guidance for agentic coding assistants working in this repository.
 - `src/main/java/com/example/aichat/` - backend source code.
 - `src/test/java/com/example/aichat/` - backend tests.
 - `src/main/resources/db/schema.sql` - database initialization schema.
+- `docs/DB_MIGRATION_MEMORY.md` - database migration rules and incident memory.
+- `docs/ROADMAP_TODO.md` - backlog of discussed follow-up features and product/technical extensions.
 - `admin-ui/package.json` - frontend scripts and dependencies.
 - `admin-ui/src/api/` - Axios API wrappers.
 - `admin-ui/src/views/` - Vue page components.
@@ -112,6 +114,7 @@ Guidance for agentic coding assistants working in this repository.
 - JPA repositories extend `JpaRepository`; table and column names use snake_case annotations where needed.
 - Entities usually keep `createdAt` and `updatedAt` with lifecycle hooks.
 - Do not change `ddl-auto` casually; schema is managed by SQL plus Hibernate `update`.
+- For existing or production databases, do not rely on `schema.sql` or Hibernate `ddl-auto` for field changes; read `docs/DB_MIGRATION_MEMORY.md` and provide explicit migration SQL.
 - Keep MySQL for core relational data and pgvector/Postgres for vector storage.
 - Keep Redis scoped to rate limiting, sessions, or cache-like state.
 

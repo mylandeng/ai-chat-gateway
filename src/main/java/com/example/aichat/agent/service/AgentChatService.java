@@ -65,12 +65,16 @@ public class AgentChatService {
             StreamingChatLanguageModel model = modelFactory.getStreamingModel(agent.getModelId());
             List<Object> tools = toolRegistry.getToolsForAgent(agent);
 
+            String mcpDesc = toolRegistry.getMcpToolDescription(agent);
+            String systemPrompt = mcpDesc.isEmpty() ? agent.getSystemPrompt()
+                    : agent.getSystemPrompt() + mcpDesc;
+
             var builder = AiServices.builder(AgentAssistant.class)
                     .streamingChatLanguageModel(model)
                     .chatMemoryProvider(memId -> MessageWindowChatMemory.builder()
                             .maxMessages(20)
                             .build())
-                    .systemMessageProvider(memId -> agent.getSystemPrompt());
+                    .systemMessageProvider(memId -> systemPrompt);
 
             if (!tools.isEmpty()) {
                 builder.tools(tools);
@@ -184,6 +188,46 @@ public class AgentChatService {
         emitter.onError(e -> emitter.complete());
 
         return emitter;
+    }
+
+    // ========== W6: 工作流引擎同步调用 ==========
+
+    /**
+     * 同步调用 Agent（工作流节点使用）
+     * 不走 SSE，直接返回完整文本
+     */
+    public String chatSync(Agent agent, String prompt) {
+        try {
+            AgentAssistant assistant = buildAssistant(agent);
+            // 用一次性的 memoryId，不复用会话
+            String memoryId = "wf_" + System.currentTimeMillis();
+            TokenStream tokenStream = assistant.chat(memoryId, prompt);
+
+            StringBuilder result = new StringBuilder();
+            var latch = new java.util.concurrent.CountDownLatch(1);
+            var errorRef = new java.util.concurrent.atomic.AtomicReference<Throwable>();
+
+            tokenStream
+                    .onPartialResponse(result::append)
+                    .onCompleteResponse(response -> latch.countDown())
+                    .onError(error -> {
+                        errorRef.set(error);
+                        latch.countDown();
+                    })
+                    .start();
+
+            boolean completed = latch.await(120, java.util.concurrent.TimeUnit.SECONDS);
+            if (!completed) {
+                throw new RuntimeException("Agent 调用超时");
+            }
+            if (errorRef.get() != null) {
+                throw new RuntimeException("Agent 调用失败: " + errorRef.get().getMessage(), errorRef.get());
+            }
+            return result.toString();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Agent 调用被中断", e);
+        }
     }
 
     // ========== Session / Message 管理 ==========

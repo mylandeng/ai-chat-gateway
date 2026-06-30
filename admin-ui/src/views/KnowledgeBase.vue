@@ -120,8 +120,12 @@ async function loadDocuments() {
 async function handleUpload(file) {
   uploading.value = true
   try {
-    await uploadDocument(file)
-    ElMessage.success('上传成功，正在处理...')
+    const doc = await uploadDocument(file)
+    if (doc?.duplicate) {
+      ElMessage.info('文档已存在，已跳过重复索引')
+    } else {
+      ElMessage.success('上传成功，正在处理...')
+    }
     pollDocuments()
   } catch (e) {}
   uploading.value = false
